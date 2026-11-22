@@ -1,5 +1,6 @@
 import { studioHtml } from "./studio.js";
 import { clientScript } from "./client.js";
+import { wizardScript } from "./wizard.js";
 import { manifest, serviceWorker } from "./pwa.js";
 import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
@@ -92,6 +93,9 @@ export default {
       if (request.method === "GET" && path === "/admin/client.js")
         return new Response(clientScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
           "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/wizard.js")
+        return new Response(wizardScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
+          "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
       if (request.method === "GET" && path === "/admin/manifest.webmanifest")
         return new Response(manifest,{headers:{"Content-Type":"application/manifest+json; charset=utf-8",
           "Cache-Control":"public, max-age=300","X-Content-Type-Options":"nosniff"}});
@@ -118,7 +122,7 @@ export default {
           "Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store",
           "X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY",
           "Referrer-Policy":"no-referrer",
-          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
         }});
       if (request.method === "OPTIONS" && path.startsWith("/v1/") && !path.startsWith("/v1/admin/"))
         return new Response(null,{status:204,headers:{...publicHeaders,"Access-Control-Allow-Methods":"GET, OPTIONS"}});
@@ -138,9 +142,15 @@ export default {
       if (request.method === "GET" && play) {
         const e = await playableEpisode(env,play[1],Number(play[2]));
         if (!e) return fail("Episode unavailable",404);
+        const prefix = "/v1/media/" + e.series_id + "/" + e.number + "/";
+        // Existing HLS stays supported. New simple MP4 uploads play directly on Android.
+        const hasHls = await env.MEDIA.head(e.media_prefix + "/master.m3u8");
+        const hasMp4 = hasHls ? false : await env.MEDIA.head(e.media_prefix + "/video.mp4");
+        if (!hasHls && !hasMp4) return fail("Video not ready",404);
+        const format = hasHls ? "hls" : "mp4";
         return reply({seriesId:e.series_id,episode:e.number,title:e.title,
-          playbackUrl:url.origin + "/v1/media/" + e.series_id + "/" + e.number + "/master.m3u8",
-          format:"hls"});
+          playbackUrl:url.origin + prefix + (hasHls ? "master.m3u8" : "video.mp4"),
+          format});
       }
       const media = /^\/v1\/media\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
       if (request.method === "GET" && media) {
@@ -158,11 +168,44 @@ export default {
         const object=await env.MEDIA.get(s.poster_key);
         if (!object) return fail("Poster unavailable",404);
         return new Response(object.body,{headers:{...publicHeaders,"Content-Type":object.httpMetadata?.contentType || "image/jpeg",
-          "Cache-Control":"public, max-age=86400","X-Content-Type-Options":"nosniff"}});
+          "Cache-Control":"public, max-age=300","X-Content-Type-Options":"nosniff"}});
       }
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        // Admin artwork and draft video previews are private even when the series is unpublished.
+        const privatePoster = /^\/v1\/admin\/posters\/([a-z0-9-]+)$/.exec(path);
+        if (request.method === "GET" && privatePoster) {
+          const row = await env.DB.prepare("SELECT poster_key FROM series WHERE id=?").bind(privatePoster[1]).first();
+          if (!row?.poster_key) return fail("Cover not uploaded",404,false);
+          const object = await env.MEDIA.get(row.poster_key);
+          if (!object) return fail("Cover not found in storage",404,false);
+          return new Response(object.body,{headers:{"Content-Type":object.httpMetadata?.contentType || "image/jpeg",
+            "Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}});
+        }
+        const preview = /^\/v1\/admin\/preview\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
+        if (request.method === "GET" && preview) {
+          const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
+            .bind(preview[1],Number(preview[2])).first();
+          if (!e) return fail("Episode not found",404,false);
+          const key=e.media_prefix+"/video.mp4";
+          const item=await env.MEDIA.head(key);
+          if (!item) return fail("No MP4 uploaded yet",404,false);
+          const response=await serveR2(env,key,"video.mp4",request);
+          response.headers.set("Cache-Control","private, no-store");
+          response.headers.delete("Access-Control-Allow-Origin");
+          return response;
+        }
+        const mediaStatus = /^\/v1\/admin\/media-status\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
+        if (request.method === "GET" && mediaStatus) {
+          const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
+            .bind(mediaStatus[1],Number(mediaStatus[2])).first();
+          if (!e) return fail("Episode not found",404,false);
+          const mp4=await env.MEDIA.head(e.media_prefix+"/video.mp4");
+          const hls=await env.MEDIA.head(e.media_prefix+"/master.m3u8");
+          return reply({ready:!!(mp4||hls),format:hls?"hls":mp4?"mp4":null,
+            sizeBytes:mp4?.size??null},200,false);
+        }
         if (request.method === "GET" && path === "/v1/admin/series") {
           const s=await env.DB.prepare("SELECT * FROM series ORDER BY sort_order,created_at DESC").all();
           const e=await env.DB.prepare("SELECT * FROM episodes ORDER BY series_id,number").all();
@@ -191,8 +234,9 @@ export default {
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
           if (d.status === "published" && d.licensed === true &&
-              !await env.MEDIA.head(prefix + "/master.m3u8"))
-            return fail("Upload master.m3u8 before publishing this episode",409,false);
+              !await env.MEDIA.head(prefix + "/master.m3u8") &&
+              !await env.MEDIA.head(prefix + "/video.mp4"))
+            return fail("Upload a playable video before publishing this episode",409,false);
           await env.DB.prepare(
             "INSERT INTO episodes(series_id,number,title,media_prefix,duration_seconds,status,licensed) VALUES(?,?,?,?,?,?,?) " +
             "ON CONFLICT(series_id,number) DO UPDATE SET title=excluded.title,media_prefix=excluded.media_prefix," +
@@ -213,6 +257,24 @@ export default {
           await env.MEDIA.put(key,bytes,{httpMetadata:{contentType:mime}});
           await env.DB.prepare("UPDATE series SET poster_key=?,updated_at=datetime('now') WHERE id=?").bind(key,upPoster[1]).run();
           return reply({uploaded:true,key},200,false);
+        }
+        const directMp4 = /^\/v1\/admin\/mp4\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
+        if (request.method === "PUT" && directMp4) {
+          const mime=request.headers.get("Content-Type")?.split(";")[0]?.toLowerCase();
+          if (mime!=="video/mp4" && mime!=="application/octet-stream")
+            return fail("Please choose an MP4 video",415,false);
+          // Keep below the standard Workers request-body limit. Larger files require
+          // direct-to-storage resumable uploads or Cloudflare Stream (not enabled yet).
+          const size=Number(request.headers.get("Content-Length") || request.headers.get("X-Upload-Size"));
+          if (!Number.isSafeInteger(size) || size<1 || size>90*1024*1024)
+            return fail("Choose an MP4 under 90 MB. Large-video processing is not configured yet.",413,false);
+          const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
+            .bind(directMp4[1],Number(directMp4[2])).first();
+          if (!e) return fail("Save your episode details before uploading video",404,false);
+          const key=e.media_prefix+"/video.mp4";
+          const object=await env.MEDIA.put(key,request.body,{httpMetadata:{contentType:"video/mp4"}});
+          if(object.size>90*1024*1024) {await env.MEDIA.delete(key);return fail("Video exceeds the 90 MB upload limit",413,false);}
+          return reply({uploaded:true,bytes:object.size,format:"mp4"},200,false);
         }
         const upHls=/^\/v1\/admin\/hls\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
         if (request.method === "PUT" && upHls) {

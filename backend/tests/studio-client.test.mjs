@@ -44,7 +44,8 @@ test("PWA has setup/login/account screens and no token storage",()=>{
   assert.match(studioHtml,/data-page="overview"/);
   assert.match(studioHtml,/data-page="library"/);
   assert.match(studioHtml,/data-page="media"/);
-  assert.doesNotMatch(clientScript,/localStorage|sessionStorage/);
+  assert.doesNotMatch(clientScript,/(?:localStorage|sessionStorage)\.setItem\([^)]*(?:token|password|secret)/i);
+  assert.match(clientScript,/addisreel-advanced-draft/);
 });
 
 test("fresh owner sees one-time account setup, with password-only sign-in after setup",async()=>{
@@ -63,7 +64,7 @@ test("fresh owner sees one-time account setup, with password-only sign-in after 
  assert.equal(app.el("appShell").hidden,false);
  assert.equal(app.el("authScreen").hidden,true);
  assert.ok(app.calls.some(c=>c.path==="/v1/auth/setup"));
- assert.ok(!clientScript.includes("localStorage"));
+ assert.ok(!/(?:localStorage|sessionStorage)\.setItem\([^)]*(?:token|password|secret)/i.test(clientScript));
 });
 
 test("authenticated device restores Studio without requesting token on refresh",async()=>{
