@@ -1,0 +1,8 @@
+{
+  "name": "addisreel-content-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test backend/tests/*.test.mjs"
+  }
+}
