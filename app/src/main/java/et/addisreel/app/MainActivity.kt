@@ -58,6 +58,7 @@ private fun AddisReelApp() {
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
+    var cinemaMode by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -71,6 +72,7 @@ private fun AddisReelApp() {
         selected = drama
         showEpisodes = false
         showFullDescription = false
+        cinemaMode = false
         episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
     }
     fun selectEpisode(next: Int) {
@@ -175,7 +177,7 @@ private fun AddisReelApp() {
             }
         }
         Scaffold(containerColor=Dark, bottomBar={
-            NavigationBar(containerColor=Color(0xFF141419)) {
+            if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF141419)) {
                 listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
                     NavigationBarItem(selected=tab==index,onClick={tab=index},icon={Icon(icon,contentDescription=name)},label={Text(name)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Gold,selectedTextColor=Gold,indicatorColor=Color(0xFF333027)))
                 }
@@ -187,7 +189,7 @@ private fun AddisReelApp() {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
                             val videoUrl = selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl)
+                                Video(videoUrl, selected.title + "_episode_" + episode)
                             } else {
                                 Column(
                                     Modifier.align(Alignment.Center).fillMaxWidth()
@@ -217,7 +219,10 @@ private fun AddisReelApp() {
                                     Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
                             }
-                            Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x990C0C10), RoundedCornerShape(50))) {
+                                Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = Gold)
+                            }
+                            if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
                                     Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
                                 }
@@ -228,7 +233,7 @@ private fun AddisReelApp() {
                                     Icon(Icons.Default.Info, contentDescription = "Series information")
                                 }
                             }
-                            Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
+                            if (!cinemaMode) Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
                                 Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
                                 Spacer(Modifier.height(8.dp))
@@ -244,7 +249,7 @@ private fun AddisReelApp() {
                                 }
                             }
                         }
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        if (!cinemaMode) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             catalog.forEach { drama -> FilterChip(selected=selected==drama,onClick={selectDrama(drama)},label={Text(drama.title)}) }
                         }
                     }
@@ -467,15 +472,15 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String) {
+@Composable private fun Video(url:String, episodeKey:String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
-    val positionKey = remember(url) {
+    val positionKey = remember(url, episodeKey) {
         val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
-        "position_" + bytes.joinToString("") { "%02x".format(it) }
+        "position_" + bytes.joinToString("") { "%02x".format(it) } + "_" + episodeKey
     }
-    val player = remember(url) {
+    val player = remember(url, episodeKey) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
@@ -485,8 +490,8 @@ private fun AddisReelApp() {
             prepare()
         }
     }
-    var buffering by remember(url) { mutableStateOf(true) }
-    var playbackError by remember(url) { mutableStateOf(false) }
+    var buffering by remember(url, episodeKey) { mutableStateOf(true) }
+    var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
