@@ -260,7 +260,7 @@ private fun AddisReelApp() {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, selected.title + "_episode_" + episode, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -549,7 +549,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -570,7 +570,22 @@ private fun AddisReelApp() {
     var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
     var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
     var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
+    var nextCountdown by remember(url, episodeKey) { mutableIntStateOf(3) }
+    var nextRequested by remember(url, episodeKey) { mutableStateOf(false) }
     val currentOnEpisodeCompleted by rememberUpdatedState(onEpisodeCompleted)
+    LaunchedEffect(playbackEnded, hasNextEpisode, episodeKey) {
+        if (playbackEnded && hasNextEpisode && !nextRequested) {
+            nextCountdown = 3
+            while (nextCountdown > 0 && !nextRequested) {
+                delay(1000L)
+                if (!nextRequested) nextCountdown -= 1
+            }
+            if (!nextRequested) {
+                nextRequested = true
+                currentOnEpisodeCompleted()
+            }
+        }
+    }
     LaunchedEffect(playbackError, retryCount, player) {
         if (playbackError && retryCount < 2) {
             retryPending = true
@@ -598,7 +613,6 @@ private fun AddisReelApp() {
                 if (state == Player.STATE_ENDED && !completed) {
                     completed = true
                     preferences.edit().remove(positionKey).apply()
-                    currentOnEpisodeCompleted()
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
@@ -645,9 +659,34 @@ private fun AddisReelApp() {
             }
         }
         if (playbackEnded && !playbackError) {
-            Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
-                Icon(Icons.Default.Replay, contentDescription = null)
-                Text("Replay episode")
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (hasNextEpisode) {
+                    Text("Next episode in $nextCountdown", color = Color.White, fontSize = 15.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Button(onClick = {
+                        if (!nextRequested) {
+                            nextRequested = true
+                            currentOnEpisodeCompleted()
+                        }
+                    }) {
+                        Icon(Icons.Default.SkipNext, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Play next now")
+                    }
+                    TextButton(onClick = {
+                        nextRequested = true
+                        playbackEnded = false
+                        player.seekTo(0)
+                        player.play()
+                    }) { Text("Replay this episode", color = Color.White) }
+                } else {
+                    Text("You finished this series", color = Color.White)
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
+                        Icon(Icons.Default.Replay, contentDescription = null)
+                        Text("Replay episode")
+                    }
+                }
             }
         }
         if (playbackError) {
