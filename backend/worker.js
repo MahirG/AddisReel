@@ -194,10 +194,39 @@ export default {
           const parent=await env.DB.prepare("SELECT id FROM series WHERE id=?").bind(d.seriesId).first();
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
-          if (d.status === "published" && d.licensed === true &&
-              !await env.MEDIA.head(prefix + "/master.m3u8") &&
-              !await env.MEDIA.head(prefix + "/source.mp4"))
-            return fail("Upload master.m3u8 or source.mp4 before publishing this episode",409,false);
+          if (d.status === "published" && d.licensed === true) {
+            const manifest = await env.MEDIA.get(prefix + "/master.m3u8");
+            const mp4 = manifest ? null : await env.MEDIA.head(prefix + "/source.mp4");
+            if (!manifest && !mp4)
+              return fail("Upload master.m3u8 or source.mp4 before publishing this episode",409,false);
+            if (manifest) {
+              // Do not publish partial HLS uploads: check each referenced child
+              // playlist and its local segment files exist in R2.
+              const master = await manifest.text();
+              const playlists = master.split(/\\r?\\n/).map(v=>v.trim())
+                .filter(v=>v && !v.startsWith("#"));
+              if (!playlists.length || playlists.length > 8)
+                return fail("Invalid HLS master playlist",409,false);
+              for (const playlist of playlists) {
+                if (!fileOK(playlist) || !playlist.endsWith(".m3u8"))
+                  return fail("Invalid HLS rendition playlist",409,false);
+                const child = await env.MEDIA.get(prefix + "/" + playlist);
+                if (!child) return fail("Missing HLS rendition: " + playlist,409,false);
+                const segments = (await child.text()).split(/\\r?\\n/)
+                  .map(v=>v.trim()).filter(v=>v && !v.startsWith("#"));
+                if (!segments.length || segments.length > 20000)
+                  return fail("Invalid HLS segments list",409,false);
+                const base = playlist.includes("/") ? playlist.slice(0,playlist.lastIndexOf("/")+1) : "";
+                // Check the first and final segment at minimum; a background
+                // integrity scan is still required for full verification.
+                for (const segment of [segments[0], segments[segments.length-1]]) {
+                  const key = base + segment;
+                  if (!fileOK(key) || !await env.MEDIA.head(prefix + "/" + key))
+                    return fail("Missing HLS media segment",409,false);
+                }
+              }
+            }
+          }
           await env.DB.prepare(
             "INSERT INTO episodes(series_id,number,title,media_prefix,duration_seconds,status,licensed) VALUES(?,?,?,?,?,?,?) " +
             "ON CONFLICT(series_id,number) DO UPDATE SET title=excluded.title,media_prefix=excluded.media_prefix," +
