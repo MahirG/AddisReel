@@ -63,6 +63,7 @@ test("scoped processor pairing shows credential only once and rejects anonymous 
 });
 test("public playback prefers verified optimized rendition, with originals preserved",async()=>{
   const env=mock();
+  env.MEDIA.head=async key=>key.endsWith("/optimized.mp4")?{size:400}:null;
   env.DB.prepare=(sql)=>{
     return {bind(){return this},async first(){
       if(sql.includes("video_jobs"))return {status:"ready",optimized_bytes:400};
