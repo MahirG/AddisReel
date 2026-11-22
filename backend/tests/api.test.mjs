@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { inflateSync } from "node:zlib";
 import worker from "../worker.js";
 
 const root = "https://addisreel-catalog.example.test";
@@ -26,13 +27,13 @@ test("public catalog is empty until licensed content has been published", async 
   assert.equal(res.headers.get("access-control-allow-origin"), "*");
 });
 
-test("administrative mutations fail closed if no secret is configured", async () => {
+test("administrative mutations require a logged-in owner session", async () => {
   const res = await worker.fetch(request("/v1/admin/series", {
-    method: "POST", headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json", Origin: root },
     body: JSON.stringify({ id: "test", title: "Test" })
   }), { DB: emptyDB });
-  assert.equal(res.status, 503);
-  assert.equal((await res.json()).error, "Admin not configured");
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).error, "Sign in to AddisReel Studio");
 });
 
 test("bad admin bearer token cannot read draft catalogs", async () => {
@@ -69,4 +70,47 @@ test("Content Studio serves Smart Paste controls and same-origin parser", async 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type"), /javascript/);
   assert.match(await response.text(), /parseMovieFields/);
+});
+
+test("Admin PWA assets are installable and never expose account data", async () => {
+  const env={DB:emptyDB};
+  const page=await worker.fetch(request("/admin"),env);
+  const html=await page.text();
+  assert.match(html, /manifest.webmanifest/);
+  assert.match(html, /setupForm/);
+  assert.match(html, /loginForm/);
+  assert.match(html, /logoutButton/);
+  assert.doesNotMatch(page.headers.get("content-security-policy"), /script-src[^;]*unsafe-inline/);
+  const manifest=await worker.fetch(request("/admin/manifest.webmanifest"),env);
+  const json=await manifest.json();
+  assert.equal(json.display,"standalone");
+  assert.equal(json.start_url,"/admin");
+  const sw=await worker.fetch(request("/admin/sw.js"),env);
+  assert.equal(sw.status,200);
+  assert.match(sw.headers.get("content-type"), /javascript/);
+  assert.doesNotMatch(await sw.text(), /cache.put\(.*\/v1\/auth/);
+  const javascript=await worker.fetch(request("/admin/client.js"),env);
+  assert.match(await javascript.text(), /\/v1\/auth\/session/);
+  for (const px of [192,512]){
+    const image=await worker.fetch(request("/admin/icon-"+px+".png"),env);
+    assert.equal(image.status,200);
+    assert.equal(image.headers.get("content-type"),"image/png");
+    const buf=new Uint8Array(await image.arrayBuffer());
+    assert.deepEqual(Array.from(buf.slice(0,8)),[137,80,78,71,13,10,26,10]);
+    const size=new DataView(buf.buffer).getUint32(16);
+    assert.equal(size,px);
+    let offset=8,found=false;
+    while(offset+12<=buf.length){
+      const dv=new DataView(buf.buffer,buf.byteOffset+offset,4);
+      const length=dv.getUint32(0);
+      const type=String.fromCharCode(...buf.slice(offset+4,offset+8));
+      if(type==="IDAT"){
+        const raw=inflateSync(buf.slice(offset+8,offset+8+length));
+        assert.equal(raw.length,px*(1+Math.ceil(px/8)));
+        found=true;break;
+      }
+      offset+=12+length;
+    }
+    assert.equal(found,true,"PWA PNG must contain a valid IDAT stream");
+  }
 });

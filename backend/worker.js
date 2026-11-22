@@ -1,4 +1,8 @@
-import { adminHtml } from "./admin.js";
+import { studioHtml } from "./studio.js";
+import { clientScript } from "./client.js";
+import { manifest, serviceWorker } from "./pwa.js";
+import { icon192Base64, icon512Base64 } from "./icons.js";
+import { requireAdmin, handleAuth } from "./auth.js";
 import { parseMovieFields } from "./importer.js";
 
 const publicHeaders = { "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" };
@@ -25,21 +29,6 @@ function extType(path) {
   if (path.endsWith(".m4s")) return "video/iso.segment";
   if (path.endsWith(".mp4")) return "video/mp4";
   return "application/octet-stream";
-}
-async function authorized(request, env) {
-  if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) return false;
-  const authorization = request.headers.get("Authorization") || "";
-  const match = /^Bearer (.{32,256})$/.exec(authorization);
-  if (!match) return false;
-  const encoder = new TextEncoder();
-  const [a,b] = await Promise.all([
-    crypto.subtle.digest("SHA-256",encoder.encode(match[1])),
-    crypto.subtle.digest("SHA-256",encoder.encode(env.ADMIN_TOKEN))
-  ]);
-  const x = new Uint8Array(a), y = new Uint8Array(b);
-  let diff = 0;
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i];
-  return diff === 0;
 }
 async function inputJSON(request) {
   if (Number(request.headers.get("Content-Length") || 0) > 32768) throw Error("Request too large");
@@ -93,6 +82,23 @@ export default {
     try {
       if (request.method === "GET" && path === "/health")
         return reply({status:"ok",service:"addisreel-catalog",phase:3});
+      if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
+      if (request.method === "GET" && path === "/admin/client.js")
+        return new Response(clientScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
+          "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/manifest.webmanifest")
+        return new Response(manifest,{headers:{"Content-Type":"application/manifest+json; charset=utf-8",
+          "Cache-Control":"public, max-age=300","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/sw.js")
+        return new Response(serviceWorker,{headers:{"Content-Type":"application/javascript; charset=utf-8",
+          "Cache-Control":"no-store","Service-Worker-Allowed":"/admin",
+          "X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && (path === "/admin/icon-192.png" || path === "/admin/icon-512.png")) {
+        const encoded = path.endsWith("192.png") ? icon192Base64 : icon512Base64;
+        return new Response(Uint8Array.from(atob(encoded), c => c.charCodeAt(0)),{
+          headers:{"Content-Type":"image/png","Cache-Control":"public, max-age=86400","X-Content-Type-Options":"nosniff"}
+        });
+      }
       if (request.method === "GET" && path === "/admin/importer.js")
         return new Response("window.parseMovieFields = " + parseMovieFields.toString() + ";\n", {
           headers: {
@@ -102,10 +108,11 @@ export default {
           }
         });
       if (request.method === "GET" && path === "/admin")
-        return new Response(adminHtml,{headers:{
+        return new Response(studioHtml,{headers:{
           "Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store",
           "X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY",
-          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'"
+          "Referrer-Policy":"no-referrer",
+          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
         }});
       if (request.method === "OPTIONS" && path.startsWith("/v1/") && !path.startsWith("/v1/admin/"))
         return new Response(null,{status:204,headers:{...publicHeaders,"Access-Control-Allow-Methods":"GET, OPTIONS"}});
@@ -148,8 +155,8 @@ export default {
           "Cache-Control":"public, max-age=86400","X-Content-Type-Options":"nosniff"}});
       }
       if (path.startsWith("/v1/admin/")) {
-        if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) return fail("Admin not configured",503,false);
-        if (!await authorized(request,env)) return fail("Unauthorized",401,false);
+        const access=await requireAdmin(request,env,url);
+        if(access.error) return access.error;
         if (request.method === "GET" && path === "/v1/admin/series") {
           const s=await env.DB.prepare("SELECT * FROM series ORDER BY sort_order,created_at DESC").all();
           const e=await env.DB.prepare("SELECT * FROM episodes ORDER BY series_id,number").all();
