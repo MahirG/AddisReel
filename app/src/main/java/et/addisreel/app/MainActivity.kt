@@ -29,6 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,7 +46,7 @@ import androidx.media3.ui.PlayerView
 
 private val Gold = Color(0xFFFFC857)
 private val Dark = Color(0xFF0C0C10)
-private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null, val id:String = "")
+private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null, val id:String = "", val posterUrl:String? = null)
 private const val CATALOG_API = "https://addisreel-catalog.eddieaman475.workers.dev"
 private val previewCatalog = listOf(
     Drama("Addis Love", "Romance", 12, "A story of love, family and difficult choices in Addis Ababa."),
@@ -80,7 +83,8 @@ private fun fetchPublishedCatalog(): List<Drama> {
                     genre = item.getString("genre"),
                     episodes = episodeCount,
                     description = item.optString("description", ""),
-                    id = id
+                    id = id,
+                    posterUrl = CATALOG_API + "/v1/posters/" + id
                 ))
             }
         }
@@ -515,10 +519,13 @@ private fun AddisReelApp() {
         ) {
             Box(
                 Modifier.size(width = 104.dp, height = 144.dp)
-                    .background(Brush.verticalGradient(posterColors), RoundedCornerShape(14.dp)),
+                    .background(Brush.verticalGradient(posterColors), RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (drama.posterUrl != null) {
+                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title,
+                        contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
+                } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
                     Spacer(Modifier.height(8.dp))
                     Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
