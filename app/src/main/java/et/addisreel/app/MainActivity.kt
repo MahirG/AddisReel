@@ -133,10 +133,22 @@ private fun AddisReelApp() {
     var discoverSort by remember { mutableStateOf("Featured") }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
+    // Keep a small, ordered local viewing history without requiring an account.
+    var viewingHistory by remember {
+        mutableStateOf(
+            (preferences.getString("viewing_history", "") ?: "")
+                .split("|").filter { it.isNotBlank() }.distinct().take(12)
+        )
+    }
+    fun recordViewing(title: String) {
+        viewingHistory = (listOf(title) + viewingHistory.filterNot { it == title }).take(12)
+        preferences.edit().putString("viewing_history", viewingHistory.joinToString("|")).apply()
+    }
     var selected by remember { mutableStateOf(catalog.find { it.title == recentlyWatched } ?: catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)) }
     fun selectDrama(drama: Drama) {
         recentlyWatched = drama.title
+        recordViewing(drama.title)
         preferences.edit().putString("recently_watched", drama.title).apply()
         selected = drama
         showEpisodes = false
@@ -146,6 +158,7 @@ private fun AddisReelApp() {
     }
     fun selectEpisode(next: Int) {
         recentlyWatched = selected.title
+        recordViewing(selected.title)
         preferences.edit().putString("recently_watched", selected.title).apply()
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
@@ -503,6 +516,34 @@ private fun AddisReelApp() {
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                if (discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Continue Watching", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                            Row(
+                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
+                                                    .forEach { drama ->
+                                                        val resume = preferences.getInt("episode_" + drama.title, 1)
+                                                            .coerceIn(1, drama.episodes)
+                                                        ElevatedCard(
+                                                            onClick = { selectDrama(drama); tab = 0 },
+                                                            colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF302536)),
+                                                            modifier = Modifier.width(180.dp)
+                                                        ) {
+                                                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
+                                                                Text("Resume watching", fontSize = 11.sp, color = Color.LightGray)
+                                                            }
+                                                        }
+                                                    }
+                                            }
+                                        }
+                                    }
+                                }
                                 if (discoverQuery.isBlank() && discoverGenre == "All") {
                                     item {
                                         Card(
