@@ -9,8 +9,8 @@ function fakeEnv({status="draft",licensed=0,existing=true}={}) {
   const state={sessions:new Map(),completed:new Map(),next:0};
   const env={
     DB:{prepare(sql){
-      assert.match(sql,/FROM episodes/);
-      return {bind(){return this},async first(){
+      if(!sql.includes("INSERT INTO video_jobs"))assert.match(sql,/FROM episodes/);
+      return {bind(){return this},async run(){return {meta:{changes:1}}},async first(){
         return existing?{media_prefix:"series/example/episodes/1",status,licensed}:null;
       }};
     }},
@@ -89,6 +89,7 @@ test("MP4 multipart upload assembles parts in correct order and retains content 
   assert.equal((await done.json()).sizeBytes,size);
   const saved=state.completed.get("series/example/episodes/1/video.mp4");
   assert.equal(saved.size,size);
+  assert.equal((await done.json()).optimization,"queued");
   assert.equal(saved.options.httpMetadata.contentType,"video/mp4");
 });
 test("upload rejects invalid part numbers, oversized chunks and missing sessions",async()=>{
