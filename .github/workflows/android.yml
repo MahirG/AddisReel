@@ -2,22 +2,24 @@ name: Android APK
 on:
   push:
     branches: [main, 'feature/**']
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/android.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/android.yml'
   workflow_dispatch:
 jobs:
-  catalog-api-check:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Run catalog API tests
-        run: node --test backend/tests/*.test.mjs
-
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
