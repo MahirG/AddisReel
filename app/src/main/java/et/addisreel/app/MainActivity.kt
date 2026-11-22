@@ -122,6 +122,10 @@ private fun AddisReelApp() {
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
     var cinemaMode by remember { mutableStateOf(false) }
+    // Default to the original frame so subtitles and credits are never cropped.
+    var fillVideo by remember {
+        mutableStateOf(preferences.getBoolean("cinema_fill_video", false))
+    }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -154,13 +158,16 @@ private fun AddisReelApp() {
             episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
         }
     }
-    LaunchedEffect(selected.id, episode) {
+    var streamRefresh by remember { mutableIntStateOf(0) }
+    var streamLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(selected.id, episode, streamRefresh) {
         episodeUrl = null
+        streamLoading = selected.id.isNotBlank()
         val seriesId = selected.id
         val currentEpisode = episode
         if (seriesId.isNotBlank()) {
             val warm = prefetchedEpisode
-            episodeUrl = if (warm?.first == seriesId && warm.second == currentEpisode) {
+            episodeUrl = if (streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode) {
                 prefetchedEpisode = null
                 warm.third
             } else {
@@ -170,6 +177,7 @@ private fun AddisReelApp() {
             }
             // Fetch the next episode's short-lived playback URL in advance.
             // Never pre-download media or retain URLs across app launches.
+            streamLoading = false
             if (episodeUrl != null && currentEpisode < selected.episodes) {
                 val nextUrl = runCatching {
                     withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
@@ -283,7 +291,7 @@ private fun AddisReelApp() {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -309,14 +317,88 @@ private fun AddisReelApp() {
                                 ) {
                                     Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
                                     Spacer(Modifier.height(12.dp))
-                                    Text(if (selected.id.isBlank()) "Ethiopian stories. Coming soon." else "Preparing episode stream", color=Color.LightGray)
-                                    Text(if (selected.id.isBlank()) "Licensed episodes will play here" else "Check your connection if playback does not start",fontSize=12.sp,color=Color.Gray)
+                                    Text(
+                                        when {
+                                            selected.id.isBlank() -> "Ethiopian stories. Coming soon."
+                                            streamLoading -> "Preparing episode stream…"
+                                            else -> "Episode stream unavailable"
+                                        },
+                                        color = Color.LightGray
+                                    )
+                                    Text(
+                                        when {
+                                            selected.id.isBlank() -> "Licensed episodes will play here"
+                                            streamLoading -> "Connecting securely to your episode"
+                                            else -> "Check your internet connection and try again"
+                                        },
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                    if (selected.id.isNotBlank() && streamLoading) {
+                                        Spacer(Modifier.height(12.dp))
+                                        CircularProgressIndicator(color = Gold, modifier = Modifier.size(26.dp))
+                                    }
+                                    if (selected.id.isNotBlank() && !streamLoading) {
+                                        Spacer(Modifier.height(12.dp))
+                                        Button(onClick = {
+                                            // Force a fresh playback URL; never reuse a failed prefetched token.
+                                            prefetchedEpisode = null
+                                            streamRefresh += 1
+                                        }) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Retry episode")
+                                        }
+                                    }
                                     Spacer(Modifier.height(16.dp))
                                     Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
                             }
                             IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x990C0C10), RoundedCornerShape(50))) {
                                 Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = Gold)
+                            }
+                            // Cinema mode keeps episode navigation reachable without opening a sheet.
+                            if (cinemaMode) {
+                                Row(
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                                        .background(Color(0xCC101016), RoundedCornerShape(28.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { selectEpisode(episode - 1) },
+                                        enabled = episode > 1
+                                    ) {
+                                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous episode", tint = if (episode > 1) Gold else Color.Gray)
+                                    }
+                                    Text(
+                                        "EP $episode / ${selected.episodes}",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    IconButton(
+                                        onClick = { selectEpisode(episode + 1) },
+                                        enabled = episode < selected.episodes
+                                    ) {
+                                        Icon(Icons.Default.SkipNext, contentDescription = "Next episode", tint = if (episode < selected.episodes) Gold else Color.Gray)
+                                    }
+                                    IconButton(onClick = { showEpisodes = true }) {
+                                        Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = Gold)
+                                    }
+                                    IconButton(onClick = {
+                                        fillVideo = !fillVideo
+                                        preferences.edit().putBoolean("cinema_fill_video", fillVideo).apply()
+                                    }) {
+                                        Icon(
+                                            if (fillVideo) Icons.Default.FitScreen else Icons.Default.CropFree,
+                                            contentDescription = if (fillVideo) "Fit entire video" else "Fill screen",
+                                            tint = Gold
+                                        )
+                                    }
+                                }
                             }
                             if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
@@ -572,7 +654,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -777,9 +859,16 @@ private fun AddisReelApp() {
                     useController = true
                     controllerShowTimeoutMs = 2500
                     controllerHideOnTouch = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                     keepScreenOn = true
                 }
+            },
+            // Compose may reuse the existing Android view when an episode changes.
+            // Always bind the currently active player instead of retaining the
+            // released player from the previous episode.
+            update = { view ->
+                if (view.player !== player) view.player = player
+                view.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             },
             modifier = Modifier.fillMaxSize()
         )
