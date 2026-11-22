@@ -1,3 +1,4 @@
+import { queueOptimization } from './processor-api.js';
 // Authenticated large-file MP4 ingestion for the AddisReel Content Studio.
 // This module must only be called AFTER the normal admin session check.
 // R2 multipart uses modest 8 MiB requests, avoiding the 100 MB Worker body limit.
@@ -68,7 +69,8 @@ export async function handleMultipartUpload(request,env,url,seriesId,number) {
         await env.MEDIA.delete(key);
         return fail("Video size verification failed. Please reselect and upload again.",409);
       }
-      return respond({uploaded:true,sizeBytes:object.size,format:"mp4",parts:total});
+      await queueOptimization(env,seriesId,number,object.size);
+      return respond({uploaded:true,sizeBytes:object.size,format:"mp4",parts:total,optimization:"queued"});
     }
     if(request.method==="DELETE" && action==="abort") {
       await upload.abort();
