@@ -130,7 +130,7 @@ export async function handleProcessor(request,env,url){
     return json({uploadId:upload.uploadId,partSize:PART,totalParts:Math.ceil(d.size/PART)});
   }
   const uploadId=url.searchParams.get("uploadId");
-  if(!tokenOK(uploadId))return bad("Invalid output upload");
+  if(typeof uploadId!=="string" || uploadId.length<8 || uploadId.length>512 || /[\u0000-\u001f\u007f]/.test(uploadId))return bad("Invalid output upload");
   const upload=env.MEDIA.resumeMultipartUpload(key,uploadId);
   if(request.method==="PUT"&&action==="part"){
     const number=Number(url.searchParams.get("partNumber"));
