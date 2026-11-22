@@ -119,7 +119,7 @@ export async function handleAuth(request,env,url) {
     const account=await owner(env);
     if(!account || account.locked_until>nowSeconds())
       return json({error:"Invalid credentials or temporarily locked. Try later."},401);
-    const valid=email===account.email && await equalString(await hashPassword(password,account.password_salt),account.password_hash);
+    // A completed lockout starts a fresh attempt window rather than immediately relocking.\n    if(account.locked_until && account.locked_until<=nowSeconds()) {\n      await env.DB.prepare("UPDATE admin_account SET failed_attempts=0,locked_until=0 WHERE id=1").run();\n    }\n    const valid=email===account.email && await equalString(await hashPassword(password,account.password_salt),account.password_hash);
     if(!valid) {
       await env.DB.prepare("UPDATE admin_account SET failed_attempts=failed_attempts+1,locked_until=CASE WHEN failed_attempts+1>=5 THEN ? ELSE 0 END WHERE id=1")
         .bind(nowSeconds()+15*60).run();
