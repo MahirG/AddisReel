@@ -609,6 +609,8 @@ private fun AddisReelApp() {
                 if (state == Player.STATE_READY) {
                     retryCount = 0
                     playbackError = false
+                    // A replayed episode must save its position again if interrupted.
+                    if (completed && player.currentPosition < 1000L) completed = false
                 }
                 if (state == Player.STATE_ENDED && !completed) {
                     completed = true
@@ -674,15 +676,22 @@ private fun AddisReelApp() {
                         Text("Play next now")
                     }
                     TextButton(onClick = {
-                        nextRequested = true
+                        nextRequested = false
                         playbackEnded = false
+                        nextCountdown = 3
                         player.seekTo(0)
                         player.play()
                     }) { Text("Replay this episode", color = Color.White) }
                 } else {
                     Text("You finished this series", color = Color.White)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
+                    Button(onClick = {
+                        playbackEnded = false
+                        nextRequested = false
+                        nextCountdown = 3
+                        player.seekTo(0)
+                        player.play()
+                    }) {
                         Icon(Icons.Default.Replay, contentDescription = null)
                         Text("Replay episode")
                     }
