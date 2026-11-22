@@ -1,6 +1,10 @@
 package et.addisreel.app
 
 import android.os.Bundle
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
@@ -574,6 +578,27 @@ private fun AddisReelApp() {
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
     // Stable episode identity survives refreshed or signed playback URLs.
     val positionKey = remember(episodeKey) { "position_" + episodeKey }
+    val connectivity = remember(context) {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    fun hasInternet(): Boolean {
+        val active = connectivity.activeNetwork ?: return false
+        return connectivity.getNetworkCapabilities(active)
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }
+    var isOnline by remember(url, episodeKey) { mutableStateOf(hasInternet()) }
+    DisposableEffect(connectivity, url, episodeKey) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                isOnline = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+            override fun onLost(network: Network) {
+                isOnline = hasInternet()
+            }
+        }
+        connectivity.registerDefaultNetworkCallback(callback)
+        onDispose { connectivity.unregisterNetworkCallback(callback) }
+    }
     val player = remember(url, episodeKey) {
         // Keep enough video buffered for variable mobile networks without excessive data use.
         val loadControl = DefaultLoadControl.Builder()
@@ -607,6 +632,22 @@ private fun AddisReelApp() {
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
     var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
+    var failurePositionMs by remember(url, episodeKey) {
+        mutableLongStateOf(preferences.getLong(positionKey, 0L))
+    }
+    var inForeground by remember(url, episodeKey) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    var observedOutage by remember(url, episodeKey) { mutableStateOf(!isOnline) }
+    LaunchedEffect(isOnline) {
+        if (!isOnline) {
+            observedOutage = true
+        } else if (observedOutage) {
+            // A restored connection deserves a fresh, bounded retry budget.
+            retryCount = 0
+            observedOutage = false
+        }
+    }
     var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
     var nextCountdown by remember(url, episodeKey) { mutableIntStateOf(3) }
     var nextRequested by remember(url, episodeKey) { mutableStateOf(false) }
@@ -624,22 +665,27 @@ private fun AddisReelApp() {
             }
         }
     }
-    LaunchedEffect(playbackError, retryCount, player) {
-        if (playbackError && retryCount < 2) {
+    LaunchedEffect(playbackError, retryCount, isOnline, inForeground, player) {
+        if (playbackError && isOnline && inForeground && retryCount < 3) {
             retryPending = true
-            delay(if (retryCount == 0) 1500L else 3500L)
-            retryCount += 1
-            playbackError = false
-            buffering = true
+            // Back off repeated failures; never spin endlessly on a bad stream.
+            delay(when (retryCount) { 0 -> 800L; 1 -> 2000L; else -> 4000L })
+            if (isOnline && inForeground) {
+                retryCount += 1
+                player.seekTo(failurePositionMs)
+                player.prepare()
+                player.playWhenReady = true
+                buffering = true
+                playbackError = false
+            }
             retryPending = false
-            player.prepare()
-            player.playWhenReady = true
-        } else if (!playbackError) {
+        } else {
             retryPending = false
         }
     }
-    DisposableEffect(player) {
+    DisposableEffect(player, lifecycleOwner) {
         var completed = false
+        var wasPlayingBeforeBackground = false
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
@@ -656,16 +702,32 @@ private fun AddisReelApp() {
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
+                failurePositionMs = player.currentPosition.coerceAtLeast(0L)
+                if (failurePositionMs > 0L) {
+                    preferences.edit().putLong(positionKey, failurePositionMs).apply()
+                }
                 buffering = false
                 playbackError = true
             }
         }
         val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                if (!completed && player.currentPosition > 0L) {
-                    preferences.edit().putLong(positionKey, player.currentPosition).apply()
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    inForeground = true
+                    if (wasPlayingBeforeBackground && !playbackError && !completed) {
+                        player.play()
+                    }
+                    wasPlayingBeforeBackground = false
                 }
-                player.pause()
+                Lifecycle.Event.ON_STOP -> {
+                    inForeground = false
+                    wasPlayingBeforeBackground = player.playWhenReady && !completed
+                    if (!completed && player.currentPosition > 0L) {
+                        preferences.edit().putLong(positionKey, player.currentPosition).apply()
+                    }
+                    player.pause()
+                }
+                else -> Unit
             }
         }
         player.addListener(listener)
@@ -697,7 +759,11 @@ private fun AddisReelApp() {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Gold)
                 Spacer(Modifier.height(12.dp))
-                Text("Preparing your episode…", color = Color.White, fontSize = 13.sp)
+                Text(
+                    if (isOnline) "Preparing your episode…" else "Internet disconnected — waiting to reconnect",
+                    color = Color.White,
+                    fontSize = 13.sp
+                )
             }
         }
         if (playbackEnded && !playbackError) {
@@ -739,18 +805,32 @@ private fun AddisReelApp() {
             }
         }
         if (playbackError) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (retryPending) "Connection interrupted — reconnecting…" else "Video couldn't load", color = Color.White)
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    when {
+                        !isOnline -> "You're offline. Playback will retry when internet returns."
+                        !inForeground -> "Playback paused in the background"
+                        retryPending -> "Connection interrupted — reconnecting…"
+                        retryCount >= 3 -> "Can't play right now. Check your connection and try again."
+                        else -> "Video interrupted. Preparing to reconnect…"
+                    },
+                    color = Color.White
+                )
                 Spacer(Modifier.height(8.dp))
-                if (retryPending) {
+                if (retryPending && isOnline) {
                     CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
-                } else {
+                } else if (isOnline && inForeground) {
                     Button(onClick = {
-                        retryCount = 2
-                        playbackError = false
-                        buffering = true
+                        retryCount = 0
+                        failurePositionMs = player.currentPosition.coerceAtLeast(failurePositionMs)
+                        player.seekTo(failurePositionMs)
                         player.prepare()
                         player.playWhenReady = true
+                        buffering = true
+                        playbackError = false
                     }) { Text("Try again") }
                 }
             }
