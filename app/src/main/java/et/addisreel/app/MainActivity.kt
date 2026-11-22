@@ -825,13 +825,18 @@ private fun AddisReelApp() {
             ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
     }
     var isOnline by remember(url, episodeKey) { mutableStateOf(hasInternet()) }
+    var isMetered by remember(url, episodeKey) { mutableStateOf(connectivity.isActiveNetworkMetered) }
     DisposableEffect(connectivity, url, episodeKey) {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                isOnline = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                // Query the active network rather than a stale network that may
+                // still deliver callbacks during Wi-Fi/mobile handover.
+                isOnline = hasInternet()
+                isMetered = connectivity.isActiveNetworkMetered
             }
             override fun onLost(network: Network) {
                 isOnline = hasInternet()
+                isMetered = connectivity.isActiveNetworkMetered
             }
         }
         connectivity.registerDefaultNetworkCallback(callback)
@@ -873,6 +878,16 @@ private fun AddisReelApp() {
             playWhenReady = true
             prepare()
         }
+    }
+    // React to Wi-Fi/mobile handover without replacing the player or losing
+    // the current position. Unmetered connections regain unrestricted ABR.
+    LaunchedEffect(player, isMetered) {
+        val selector = player.trackSelector as? DefaultTrackSelector
+        selector?.setParameters(
+            selector.buildUponParameters().setMaxVideoBitrate(
+                if (isMetered) 1_500_000 else Int.MAX_VALUE
+            )
+        )
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     // Avoid flashing a loading spinner for brief, normal buffer transitions.
