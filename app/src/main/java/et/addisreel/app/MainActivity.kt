@@ -64,9 +64,9 @@ private fun AddisReelApp() {
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
-    var selected by remember { mutableStateOf(catalog.first()) }
-    var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
     var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
+    var selected by remember { mutableStateOf(catalog.find { it.title == recentlyWatched } ?: catalog.first()) }
+    var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)) }
     fun selectDrama(drama: Drama) {
         recentlyWatched = drama.title
         preferences.edit().putString("recently_watched", drama.title).apply()
@@ -166,11 +166,7 @@ private fun AddisReelApp() {
                                         Text("Episode $number", fontWeight = FontWeight.SemiBold)
                                         if (active) Text("Current episode", fontSize = 11.sp, color = Gold)
                                     }
-                                    if (number < episode) Icon(
-                                        Icons.Default.CheckCircle,
-                                        contentDescription = "Previously selected episode",
-                                        tint = Color.Gray
-                                    )
+
                                 }
                             }
                         }
@@ -500,6 +496,7 @@ private fun AddisReelApp() {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 playbackEnded = state == Player.STATE_ENDED
+                if (state == Player.STATE_ENDED) preferences.edit().remove(positionKey).apply()
             }
             override fun onPlayerError(error: PlaybackException) {
                 buffering = false
@@ -512,8 +509,6 @@ private fun AddisReelApp() {
                     preferences.edit().putLong(positionKey, player.currentPosition).apply()
                 }
                 player.pause()
-            } else if (event == Lifecycle.Event.ON_START) {
-                player.playWhenReady = true
             }
         }
         player.addListener(listener)
