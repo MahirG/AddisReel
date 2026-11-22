@@ -56,6 +56,8 @@ private fun AddisReelApp() {
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
+    var discoverQuery by remember { mutableStateOf("") }
+    var discoverGenre by remember { mutableStateOf("All") }
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
     fun selectDrama(drama: Drama) {
@@ -158,9 +160,60 @@ private fun AddisReelApp() {
                     }
                     1 -> {
                         Header("Discover")
-                        LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                            item { Text("Ethiopian short dramas",fontSize=20.sp,fontWeight=FontWeight.Bold) }
-                            items(catalog) { drama -> DramaRow(drama) { selectDrama(drama);tab=0 } }
+                        val genres = remember { listOf("All") + catalog.map { it.genre }.distinct() }
+                        val filtered = catalog.filter { drama ->
+                            (discoverGenre == "All" || drama.genre == discoverGenre) &&
+                                (discoverQuery.isBlank() ||
+                                    drama.title.contains(discoverQuery.trim(), ignoreCase = true) ||
+                                    drama.genre.contains(discoverQuery.trim(), ignoreCase = true) ||
+                                    drama.description.contains(discoverQuery.trim(), ignoreCase = true))
+                        }
+                        Column(Modifier.fillMaxSize()) {
+                            OutlinedTextField(
+                                value = discoverQuery,
+                                onValueChange = { discoverQuery = it },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                label = { Text("Search Ethiopian dramas") },
+                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                                singleLine = true,
+                                trailingIcon = {
+                                    if (discoverQuery.isNotEmpty()) {
+                                        IconButton(onClick = { discoverQuery = "" }) {
+                                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                                        }
+                                    }
+                                }
+                            )
+                            Row(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                genres.forEach { genre ->
+                                    FilterChip(
+                                        selected = discoverGenre == genre,
+                                        onClick = { discoverGenre = genre },
+                                        label = { Text(genre) }
+                                    )
+                                }
+                            }
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                item { Text("${filtered.size} dramas", color = Color.LightGray) }
+                                if (filtered.isEmpty()) {
+                                    item {
+                                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Icon(Icons.Default.SearchOff, contentDescription = null, tint = Gold, modifier = Modifier.size(44.dp))
+                                            Spacer(Modifier.height(12.dp))
+                                            Text("No dramas found", fontWeight = FontWeight.Bold)
+                                            Text("Try another title or genre", color = Color.LightGray)
+                                            TextButton(onClick = { discoverQuery = ""; discoverGenre = "All" }) { Text("Clear filters") }
+                                        }
+                                    }
+                                }
+                                items(filtered) { drama -> DramaRow(drama) { selectDrama(drama);tab=0 } }
+                            }
                         }
                     }
                     2 -> {
