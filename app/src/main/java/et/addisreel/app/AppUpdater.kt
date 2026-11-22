@@ -1,6 +1,5 @@
 package et.addisreel.app
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -17,7 +16,7 @@ data class UpdateRelease(val versionCode: Int, val version: String, val notes: S
 
 object AppUpdater {
     private const val RELEASES = "https://addisreel-updates.eddieaman475.workers.dev/v1/latest"
-    fun check(currentVersion: String): UpdateRelease? {
+    fun check(currentVersion: String, currentVersionCode: Int): UpdateRelease? {
         val connection = (URL(RELEASES).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12000
             readTimeout = 12000
@@ -30,10 +29,8 @@ object AppUpdater {
             val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
             val tag = json.getString("version")
             val code = json.getInt("versionCode")
-            val parts = tag.split(".").mapNotNull { it.toIntOrNull() }
-            val installed = currentVersion.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
-            if (parts.size != 3 || installed.size != 3) return null
-            if (parts.zip(installed).firstOrNull { it.first != it.second }?.let { it.first < it.second } == true || parts == installed) return null
+            if (code <= currentVersionCode) return null
+            if (!tag.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+"))) return null
             val sha = json.getString("sha256").lowercase()
             val link = json.getString("apkUrl")
             if (!sha.matches(Regex("[a-f0-9]{64}")) || !link.startsWith("https://addisreel-updates.eddieaman475.workers.dev/v1/apk/")) return null
@@ -66,6 +63,12 @@ object AppUpdater {
                 }
             }
             if (file.length() < 1024) error("Downloaded APK is invalid")
+            val archive = context.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+                ?: error("Downloaded file is not an Android APK")
+            if (archive.packageName != context.packageName) error("APK package name does not match AddisReel")
+            val installedCode = if (Build.VERSION.SDK_INT >= 28) context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode else context.packageManager.getPackageInfo(context.packageName, 0).versionCode.toLong()
+            val archiveCode = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
+            if (archiveCode <= installedCode || archiveCode != release.versionCode.toLong()) error("APK version is not newer than installed version")
             val digest = MessageDigest.getInstance("SHA-256")
             file.inputStream().use { input ->
                 val bytes = ByteArray(32768)
