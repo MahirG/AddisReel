@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
@@ -151,6 +152,9 @@ private fun AddisReelApp() {
     // Default to the original frame so subtitles and credits are never cropped.
     var fillVideo by remember {
         mutableStateOf(preferences.getBoolean("cinema_fill_video", false))
+    }
+    var subtitlesEnabled by remember {
+        mutableStateOf(preferences.getBoolean("cinema_subtitles", true))
     }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
@@ -380,7 +384,7 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -461,6 +465,16 @@ private fun AddisReelApp() {
                                     }
                                     IconButton(onClick = { showEpisodes = true }) {
                                         Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = Gold)
+                                    }
+                                    IconButton(onClick = {
+                                        subtitlesEnabled = !subtitlesEnabled
+                                        preferences.edit().putBoolean("cinema_subtitles", subtitlesEnabled).apply()
+                                    }) {
+                                        Icon(
+                                            Icons.Default.ClosedCaption,
+                                            contentDescription = if (subtitlesEnabled) "Turn subtitles off" else "Turn subtitles on",
+                                            tint = if (subtitlesEnabled) Gold else Color.Gray
+                                        )
                                     }
                                     IconButton(onClick = {
                                         fillVideo = !fillVideo
@@ -829,7 +843,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -897,6 +911,12 @@ private fun AddisReelApp() {
             playWhenReady = true
             prepare()
         }
+    }
+    LaunchedEffect(player, subtitlesEnabled) {
+        val selector = player.trackSelector as? DefaultTrackSelector
+        selector?.setParameters(
+            selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled)
+        )
     }
     // React to Wi-Fi/mobile handover without replacing the player or losing
     // the current position. Unmetered connections regain unrestricted ABR.
