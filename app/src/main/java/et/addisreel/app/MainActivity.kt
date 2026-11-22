@@ -259,7 +259,9 @@ private fun AddisReelApp() {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, selected.title + "_episode_" + episode)
+                                Video(videoUrl, selected.title + "_episode_" + episode, onEpisodeCompleted = {
+                                    if (episode < selected.episodes) selectEpisode(episode + 1)
+                                })
                             } else {
                                 Column(
                                     Modifier.align(Alignment.Center).fillMaxWidth()
@@ -546,14 +548,12 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String) {
+@Composable private fun Video(url:String, episodeKey:String, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
-    val positionKey = remember(url, episodeKey) {
-        val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
-        "position_" + bytes.joinToString("") { "%02x".format(it) } + "_" + episodeKey
-    }
+    // Stable episode identity survives refreshed or signed playback URLs.
+    val positionKey = remember(episodeKey) { "position_" + episodeKey }
     val player = remember(url, episodeKey) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(url))
@@ -567,12 +567,18 @@ private fun AddisReelApp() {
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
+    val currentOnEpisodeCompleted by rememberUpdatedState(onEpisodeCompleted)
     DisposableEffect(player) {
+        var completed = false
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 playbackEnded = state == Player.STATE_ENDED
-                if (state == Player.STATE_ENDED) preferences.edit().remove(positionKey).apply()
+                if (state == Player.STATE_ENDED && !completed) {
+                    completed = true
+                    preferences.edit().remove(positionKey).apply()
+                    currentOnEpisodeCompleted()
+                }
             }
             override fun onPlayerError(error: PlaybackException) {
                 buffering = false
@@ -581,7 +587,7 @@ private fun AddisReelApp() {
         }
         val lifecycleObserver = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
-                if (player.currentPosition > 0L) {
+                if (!completed && player.currentPosition > 0L) {
                     preferences.edit().putLong(positionKey, player.currentPosition).apply()
                 }
                 player.pause()
@@ -590,7 +596,7 @@ private fun AddisReelApp() {
         player.addListener(listener)
         lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose {
-            if (player.currentPosition > 0L) {
+            if (!completed && player.currentPosition > 0L) {
                 preferences.edit().putLong(positionKey, player.currentPosition).apply()
             }
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
