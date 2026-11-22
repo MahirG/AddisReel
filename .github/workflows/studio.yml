@@ -1,0 +1,43 @@
+name: AddisReel Studio & Catalog API
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**']
+    paths:
+      - 'backend/**'
+      - '.github/workflows/studio.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/studio.yml'
+  workflow_dispatch:
+
+jobs:
+  studio-api-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run Studio and catalog API tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test backend/tests/*.test.mjs 2>&1 | tee studio-tests.log
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AddisReel-studio-test-log
+          path: studio-tests.log
+          retention-days: 7
+      - name: Report result
+        if: always()
+        shell: bash
+        run: |
+          echo "## AddisReel Studio & Catalog API" >> "$GITHUB_STEP_SUMMARY"
+          echo "No Android APK is built in this workflow." >> "$GITHUB_STEP_SUMMARY"
