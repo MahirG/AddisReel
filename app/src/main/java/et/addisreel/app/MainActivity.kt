@@ -5,6 +5,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -87,6 +88,7 @@ private fun AddisReelApp() {
         saved = updated
         preferences.edit().putStringSet("saved_titles", updated).apply()
     }
+    BackHandler(enabled = cinemaMode && tab == 0) { cinemaMode = false }
     MaterialTheme(colorScheme = darkColorScheme(primary=Gold, background=Dark, surface=Color(0xFF18181E))) {
         detailDrama?.let { drama ->
             AlertDialog(
@@ -485,17 +487,19 @@ private fun AddisReelApp() {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
             if (savedPosition > 0L) seekTo(savedPosition)
-            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+            repeatMode = ExoPlayer.REPEAT_MODE_OFF
             playWhenReady = true
             prepare()
         }
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
+    var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
+                playbackEnded = state == Player.STATE_ENDED
             }
             override fun onPlayerError(error: PlaybackException) {
                 buffering = false
@@ -508,6 +512,8 @@ private fun AddisReelApp() {
                     preferences.edit().putLong(positionKey, player.currentPosition).apply()
                 }
                 player.pause()
+            } else if (event == Lifecycle.Event.ON_START) {
+                player.playWhenReady = true
             }
         }
         player.addListener(listener)
@@ -535,6 +541,12 @@ private fun AddisReelApp() {
         )
         if (buffering && !playbackError) {
             CircularProgressIndicator(color = Gold)
+        }
+        if (playbackEnded && !playbackError) {
+            Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
+                Icon(Icons.Default.Replay, contentDescription = null)
+                Text("Replay episode")
+            }
         }
         if (playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
