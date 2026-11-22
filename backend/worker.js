@@ -1,6 +1,7 @@
 import { studioHtml } from "./studio.js";
 import { clientScript } from "./client.js";
 import { wizardScript } from "./wizard.js";
+import { handleMultipartUpload } from "./multipart.js";
 import { manifest, serviceWorker } from "./pwa.js";
 import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
@@ -173,6 +174,8 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        const multipartPath=/^\/v1\/admin\/uploads\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
+        if(multipartPath) return handleMultipartUpload(request,env,url,multipartPath[1],Number(multipartPath[2]));
         // Admin artwork and draft video previews are private even when the series is unpublished.
         const privatePoster = /^\/v1\/admin\/posters\/([a-z0-9-]+)$/.exec(path);
         if (request.method === "GET" && privatePoster) {
