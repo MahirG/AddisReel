@@ -781,6 +781,12 @@ private fun AddisReelApp() {
                     keepScreenOn = true
                 }
             },
+            // Compose may reuse the existing Android view when an episode changes.
+            // Always bind the currently active player instead of retaining the
+            // released player from the previous episode.
+            update = { view ->
+                if (view.player !== player) view.player = player
+            },
             modifier = Modifier.fillMaxSize()
         )
         if (showBuffering && buffering && !playbackError) {
