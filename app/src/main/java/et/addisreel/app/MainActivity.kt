@@ -47,10 +47,12 @@ private fun AddisReelApp() {
     val context = LocalContext.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
+    var showEpisodes by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
     fun selectDrama(drama: Drama) {
         selected = drama
+        showEpisodes = false
         episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
     }
     fun selectEpisode(next: Int) {
@@ -64,6 +66,28 @@ private fun AddisReelApp() {
         preferences.edit().putStringSet("saved_titles", updated).apply()
     }
     MaterialTheme(colorScheme = darkColorScheme(primary=Gold, background=Dark, surface=Color(0xFF18181E))) {
+        if (showEpisodes) {
+            AlertDialog(
+                onDismissRequest = { showEpisodes = false },
+                title = { Text(selected.title + " · Episodes") },
+                text = {
+                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                        items((1..selected.episodes).toList()) { number ->
+                            TextButton(
+                                onClick = { selectEpisode(number); showEpisodes = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(if (number == episode) Icons.Default.PlayArrow else Icons.Default.Movie, contentDescription = null)
+                                Spacer(Modifier.width(12.dp))
+                                Text("Episode $number", modifier = Modifier.weight(1f))
+                                if (number == episode) Text("Current", color = Gold)
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { showEpisodes = false }) { Text("Close") } }
+            )
+        }
         Scaffold(containerColor=Dark, bottomBar={
             NavigationBar(containerColor=Color(0xFF141419)) {
                 listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
@@ -90,6 +114,7 @@ private fun AddisReelApp() {
                                 Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
                                 Text(selected.description,maxLines=2,overflow=TextOverflow.Ellipsis,color=Color.LightGray)
+                                TextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     OutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
@@ -112,7 +137,7 @@ private fun AddisReelApp() {
                     2 -> {
                         Header("My Library")
                         if(saved.isEmpty()) Text("Save a series to watch it later.",Modifier.padding(20.dp),color=Color.LightGray)
-                        else LazyColumn { items(catalog.filter{it.title in saved}) { drama -> DramaRow(drama){selected=drama;episode=1;tab=0} } }
+                        else LazyColumn { items(catalog.filter{it.title in saved}) { drama -> DramaRow(drama){selectDrama(drama);tab=0} } }
                     }
                     else -> {
                         Header("AddisReel Premium")
