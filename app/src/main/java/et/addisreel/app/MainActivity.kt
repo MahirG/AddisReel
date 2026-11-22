@@ -119,6 +119,8 @@ private fun AddisReelApp() {
     var episodeUrl by remember { mutableStateOf<String?>(null) }
     // Prefetch only the next playback URL (not the video bytes) to avoid extra mobile data.
     var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
+    // Signed playback URLs may expire. Never reuse a prefetched URL indefinitely.
+    var prefetchedAtMs by remember { mutableLongStateOf(0L) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
@@ -183,7 +185,10 @@ private fun AddisReelApp() {
         val currentEpisode = episode
         if (seriesId.isNotBlank()) {
             val warm = prefetchedEpisode
-            episodeUrl = if (streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode) {
+            episodeUrl = if (
+                streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode &&
+                android.os.SystemClock.elapsedRealtime() - prefetchedAtMs in 0L..60_000L
+            ) {
                 prefetchedEpisode = null
                 warm.third
             } else {
@@ -199,6 +204,7 @@ private fun AddisReelApp() {
                     withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
                 }.getOrNull()
                 prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
+                prefetchedAtMs = if (nextUrl != null) android.os.SystemClock.elapsedRealtime() else 0L
             }
         }
     }
