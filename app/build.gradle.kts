@@ -1,7 +1,25 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
 android { namespace = "et.addisreel.app"; compileSdk = 35
  defaultConfig { applicationId = "et.addisreel.app"; minSdk = 24; targetSdk = 35; versionCode = 2; versionName = "0.1.1" }
- buildTypes { release { isMinifyEnabled = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }
+ signingConfigs {
+  create("production") {
+   val keystorePath = System.getenv("ADDISREEL_KEYSTORE_PATH")
+   if (!keystorePath.isNullOrBlank()) {
+    storeFile = file(keystorePath)
+    storePassword = System.getenv("ADDISREEL_KEYSTORE_PASSWORD")
+    keyAlias = System.getenv("ADDISREEL_KEY_ALIAS")
+    keyPassword = System.getenv("ADDISREEL_KEY_PASSWORD")
+   }
+  }
+ }
+ buildTypes {
+  release {
+   isMinifyEnabled = true
+   isShrinkResources = true
+   signingConfig = signingConfigs.getByName("production")
+   proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+  }
+ }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
  buildFeatures { compose = true }
