@@ -126,27 +126,53 @@ private fun AddisReelApp() {
             )
         }
         if (showEpisodes) {
-            AlertDialog(
+            ModalBottomSheet(
                 onDismissRequest = { showEpisodes = false },
-                title = { Column { Text(selected.title); Text("${selected.episodes} episodes · Tap to jump", color = Gold, fontSize = 12.sp) } },
-                text = {
-                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                containerColor = Color(0xFF1D1D24),
+                dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) }
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                    Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
+                    Spacer(Modifier.height(14.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
                         items((1..selected.episodes).toList()) { number ->
-                            TextButton(
+                            val active = number == episode
+                            Surface(
                                 onClick = { selectEpisode(number); showEpisodes = false },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (active) Color(0xFF403526) else Color(0xFF292930),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(if (number == episode) Icons.Default.PlayArrow else Icons.Default.Movie, contentDescription = null)
-                                Spacer(Modifier.width(12.dp))
-                                Text("Episode $number", modifier = Modifier.weight(1f))
-                                if (number == episode) Text("Now playing", color = Gold)
-                                else if (number < episode) Icon(Icons.Default.CheckCircle, contentDescription = "Previously selected", tint = Color.Gray)
+                                Row(
+                                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (active) Icons.Default.PlayCircle else Icons.Default.Movie,
+                                        contentDescription = null,
+                                        tint = if (active) Gold else Color.LightGray
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Episode $number", fontWeight = FontWeight.SemiBold)
+                                        if (active) Text("Current episode", fontSize = 11.sp, color = Gold)
+                                    }
+                                    if (number < episode) Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = "Previously selected episode",
+                                        tint = Color.Gray
+                                    )
+                                }
                             }
                         }
                     }
-                },
-                confirmButton = { TextButton(onClick = { showEpisodes = false }) { Text("Close") } }
-            )
+                }
+            }
         }
         Scaffold(containerColor=Dark, bottomBar={
             NavigationBar(containerColor=Color(0xFF141419)) {
