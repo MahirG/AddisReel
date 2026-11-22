@@ -2,7 +2,6 @@
 // Bootstrap with ADMIN_TOKEN once; afterwards use email+password and a HttpOnly session.
 const COOKIE = "__Host-addisreel_session";
 const SESSION_SECONDS = 90 * 24 * 60 * 60;
-const ITERATIONS = 180000;
 const encoder = new TextEncoder();
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 const toHex = arr => Array.from(arr, n => n.toString(16).padStart(2, "0")).join("");
@@ -24,13 +23,18 @@ async function digest(input) {
   const hash=await crypto.subtle.digest("SHA-256",encoder.encode(input));
   return toHex(new Uint8Array(hash));
 }
-async function hashPassword(password,salt) {
-  const key=await crypto.subtle.importKey("raw",encoder.encode(password),"PBKDF2",false,["deriveBits"]);
-  const result=await crypto.subtle.deriveBits({
-    name:"PBKDF2",salt:decode64(salt),iterations:ITERATIONS,hash:"SHA-256"
-  },key,256);
-  return toHex(new Uint8Array(result));
+// Password stretching runs in the owner browser so Cloudflare's free-tier
+// 10ms CPU limit cannot abort setup. A separate server-only pepper authenticates
+// the derived proof; neither the clear password nor the proof is stored in D1.
+async function protectedProof(proof,env) {
+  if(!env.AUTH_PEPPER || env.AUTH_PEPPER.length<32) throw Error("Admin password service not configured");
+  const key=await crypto.subtle.importKey("raw",encoder.encode(env.AUTH_PEPPER),
+    {name:"HMAC",hash:"SHA-256"},false,["sign"]);
+  const signature=await crypto.subtle.sign("HMAC",key,encoder.encode(proof));
+  return toHex(new Uint8Array(signature));
 }
+function proofValid(value) {return typeof value==="string"&&/^[0-9a-f]{64}$/.test(value);}
+function saltValid(value) {return typeof value==="string"&&/^[A-Za-z0-9_-]{22}$/.test(value);}
 async function equalString(a,b) {
   if (typeof a!=="string" || typeof b!=="string" || a.length !== b.length) return false;
   const hashes=await Promise.all([digest(a),digest(b)]);
@@ -88,6 +92,10 @@ export async function handleAuth(request,env,url) {
     }
     return json({authenticated:true,email:user.email,setupRequired:false},200,cookie);
   }
+  if(method==="GET" && path==="/v1/auth/salt") {
+    const account=await owner(env);
+    return json({salt:account?.password_salt||base64url(bytes(16)),iterations:180000});
+  }
   if(method==="POST" && path==="/v1/auth/setup") {
     if(await owner(env))return json({error:"Admin account already exists"},409);
     const data=await bodyJSON(request);
@@ -95,13 +103,16 @@ export async function handleAuth(request,env,url) {
        data.setupToken.length<32 || !await equalString(data.setupToken,env.ADMIN_TOKEN))
       return json({error:"Invalid setup token"},403);
     const email=typeof data.email==="string"?data.email.trim().toLowerCase():"";
-    const password=typeof data.password==="string"?data.password:"";
+    const salt=data.passwordSalt;
+    const proof=data.passwordProof;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)
       return json({error:"Enter a valid email address"},400);
-    if(password.length<12 || password.length>128)
-      return json({error:"Password must contain 12–128 characters"},400);
-    const salt=base64url(bytes(16));
-    const passwordHash=await hashPassword(password,salt);
+    if(!Number.isInteger(data.passwordLength)||data.passwordLength<12||data.passwordLength>128||
+       !saltValid(salt)||!proofValid(proof))
+      return json({error:"Invalid password setup. Enter 12–128 characters."},400);
+    if(!env.AUTH_PEPPER||env.AUTH_PEPPER.length<32)
+      return json({error:"Password service not configured"},503);
+    const passwordHash=await protectedProof(proof,env);
     try {
       await env.DB.prepare("INSERT INTO admin_account(id,email,password_salt,password_hash,failed_attempts,locked_until) VALUES(1,?,?,?,0,0)")
         .bind(email,salt,passwordHash).run();
@@ -114,12 +125,14 @@ export async function handleAuth(request,env,url) {
   if(method==="POST" && path==="/v1/auth/login") {
     const data=await bodyJSON(request);
     const email=typeof data.email==="string"?data.email.trim().toLowerCase():"";
-    const password=typeof data.password==="string"?data.password:"";
-    if(email.length>254 || password.length>128)return json({error:"Invalid credentials"},401);
+    const proof=data.passwordProof;
+    if(email.length>254 || !proofValid(proof))return json({error:"Invalid credentials"},401);
+    if(!env.AUTH_PEPPER||env.AUTH_PEPPER.length<32)
+      return json({error:"Password service not configured"},503);
     const account=await owner(env);
     if(!account || account.locked_until>nowSeconds())
       return json({error:"Invalid credentials or temporarily locked. Try later."},401);
-    const valid=email===account.email && await equalString(await hashPassword(password,account.password_salt),account.password_hash);
+    const valid=email===account.email && await equalString(await protectedProof(proof,env),account.password_hash);
     if(!valid) {
       await env.DB.prepare("UPDATE admin_account SET failed_attempts=failed_attempts+1,locked_until=CASE WHEN failed_attempts+1>=5 THEN ? ELSE 0 END WHERE id=1")
         .bind(nowSeconds()+15*60).run();
