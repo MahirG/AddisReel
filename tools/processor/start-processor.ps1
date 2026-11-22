@@ -8,7 +8,7 @@ if (-not (Test-Path $keyFile)) {
   ConvertFrom-SecureString $key | Set-Content -Path $keyFile -Encoding UTF8
   Write-Host 'Pairing key encrypted for this Windows user.'
 }
-$secure = ConvertTo-SecureString (Get-Content $keyFile -Raw)
+$secure = ConvertTo-SecureString ((Get-Content $keyFile -Raw).Trim())
 $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 try {
   $env:ADDISREEL_PROCESSOR_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
