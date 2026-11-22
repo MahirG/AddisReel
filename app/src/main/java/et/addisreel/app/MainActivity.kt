@@ -121,6 +121,8 @@ private fun AddisReelApp() {
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
+    // Viewers can move between short episodes with a deliberate vertical swipe.
+    // Keep the gesture on the player container so it works with real video too.
     var cinemaMode by remember { mutableStateOf(false) }
     // Default to the original frame so subtitles and credits are never cropped.
     var fillVideo by remember {
@@ -288,7 +290,29 @@ private fun AddisReelApp() {
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when(tab) {
                     0 -> {
-                        Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth()
+                                .background(Color(0xFF101016))
+                                .pointerInput(selected.id, selected.title, episode, selected.episodes) {
+                                    var dragDistance = 0f
+                                    detectVerticalDragGestures(
+                                        onDragStart = { dragDistance = 0f },
+                                        onVerticalDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragDistance += dragAmount
+                                        },
+                                        onDragEnd = {
+                                            if (dragDistance < -110f && episode < selected.episodes) {
+                                                selectEpisode(episode + 1)
+                                            } else if (dragDistance > 110f && episode > 1) {
+                                                selectEpisode(episode - 1)
+                                            }
+                                            dragDistance = 0f
+                                        },
+                                        onDragCancel = { dragDistance = 0f }
+                                    )
+                                }
+                        ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
                                 Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
@@ -297,22 +321,7 @@ private fun AddisReelApp() {
                             } else {
                                 Column(
                                     Modifier.align(Alignment.Center).fillMaxWidth()
-                                        .pointerInput(selected.title, episode) {
-                                            var dragDistance = 0f
-                                            detectVerticalDragGestures(
-                                                onDragStart = { dragDistance = 0f },
-                                                onVerticalDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    dragDistance += dragAmount
-                                                },
-                                                onDragEnd = {
-                                                    if (dragDistance < -90f && episode < selected.episodes) selectEpisode(episode + 1)
-                                                    if (dragDistance > 90f && episode > 1) selectEpisode(episode - 1)
-                                                    dragDistance = 0f
-                                                },
-                                                onDragCancel = { dragDistance = 0f }
-                                            )
-                                        }.padding(vertical = 32.dp),
+                                        .padding(vertical = 32.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
