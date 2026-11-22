@@ -25,6 +25,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -188,8 +191,59 @@ private fun AddisReelApp() {
     }
 }
 @Composable private fun Video(url:String) {
-    val context=androidx.compose.ui.platform.LocalContext.current
-    val player=remember(url) { ExoPlayer.Builder(context).build().apply { setMediaItem(MediaItem.fromUri(url));prepare();playWhenReady=true;repeatMode=ExoPlayer.REPEAT_MODE_ONE } }
-    DisposableEffect(player) { onDispose { player.release() } }
-    AndroidView(factory={PlayerView(it).apply { this.player=player;useController=true }},modifier=Modifier.fillMaxSize())
+    val context = LocalContext.current
+    val player = remember(url) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+            playWhenReady = true
+            prepare()
+        }
+    }
+    var buffering by remember(url) { mutableStateOf(true) }
+    var playbackError by remember(url) { mutableStateOf(false) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                buffering = state == Player.STATE_BUFFERING
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                buffering = false
+                playbackError = true
+            }
+        }
+        player.addListener(listener)
+        onDispose {
+            player.removeListener(listener)
+            player.release()
+        }
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        AndroidView(
+            factory = {
+                PlayerView(it).apply {
+                    this.player = player
+                    useController = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    keepScreenOn = true
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        if (buffering && !playbackError) {
+            CircularProgressIndicator(color = Gold)
+        }
+        if (playbackError) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Video couldn't load", color = Color.White)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    playbackError = false
+                    buffering = true
+                    player.prepare()
+                    player.playWhenReady = true
+                }) { Text("Try again") }
+            }
+        }
+    }
 }
