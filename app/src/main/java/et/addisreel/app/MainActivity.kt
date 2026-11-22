@@ -5,6 +5,8 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -103,11 +105,32 @@ private fun AddisReelApp() {
                             if (videoUrl != null) {
                                 Video(videoUrl)
                             } else {
-                                Column(Modifier.align(Alignment.Center),horizontalAlignment=Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
-                                Spacer(Modifier.height(12.dp))
-                                Text("Ethiopian stories. Coming soon.", color=Color.LightGray)
-                                Text("Licensed episodes will play here",fontSize=12.sp,color=Color.Gray)
+                                Column(
+                                    Modifier.align(Alignment.Center).fillMaxWidth()
+                                        .pointerInput(selected.title, episode) {
+                                            var dragDistance = 0f
+                                            detectVerticalDragGestures(
+                                                onDragStart = { dragDistance = 0f },
+                                                onVerticalDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    dragDistance += dragAmount
+                                                },
+                                                onDragEnd = {
+                                                    if (dragDistance < -90f && episode < selected.episodes) selectEpisode(episode + 1)
+                                                    if (dragDistance > 90f && episode > 1) selectEpisode(episode - 1)
+                                                    dragDistance = 0f
+                                                },
+                                                onDragCancel = { dragDistance = 0f }
+                                            )
+                                        }.padding(vertical = 32.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
+                                    Spacer(Modifier.height(12.dp))
+                                    Text("Ethiopian stories. Coming soon.", color=Color.LightGray)
+                                    Text("Licensed episodes will play here",fontSize=12.sp,color=Color.Gray)
+                                    Spacer(Modifier.height(16.dp))
+                                    Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
                             }
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
