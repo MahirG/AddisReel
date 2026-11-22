@@ -27,8 +27,8 @@ async function digest(input) {
 // 10ms CPU limit cannot abort setup. A separate server-only pepper authenticates
 // the derived proof; neither the clear password nor the proof is stored in D1.
 async function protectedProof(proof,env) {
-  if(!env.AUTH_PEPPER || env.AUTH_PEPPER.length<32) throw Error("Admin password service not configured");
-  const key=await crypto.subtle.importKey("raw",encoder.encode(env.AUTH_PEPPER),
+  if(!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length<32) throw Error("Admin password service not configured");
+  const key=await crypto.subtle.importKey("raw",encoder.encode(env.ADMIN_TOKEN),
     {name:"HMAC",hash:"SHA-256"},false,["sign"]);
   const signature=await crypto.subtle.sign("HMAC",key,encoder.encode(proof));
   return toHex(new Uint8Array(signature));
@@ -110,7 +110,7 @@ export async function handleAuth(request,env,url) {
     if(!Number.isInteger(data.passwordLength)||data.passwordLength<12||data.passwordLength>128||
        !saltValid(salt)||!proofValid(proof))
       return json({error:"Invalid password setup. Enter 12–128 characters."},400);
-    if(!env.AUTH_PEPPER||env.AUTH_PEPPER.length<32)
+    if(!env.ADMIN_TOKEN||env.ADMIN_TOKEN.length<32)
       return json({error:"Password service not configured"},503);
     const passwordHash=await protectedProof(proof,env);
     try {
@@ -127,7 +127,7 @@ export async function handleAuth(request,env,url) {
     const email=typeof data.email==="string"?data.email.trim().toLowerCase():"";
     const proof=data.passwordProof;
     if(email.length>254 || !proofValid(proof))return json({error:"Invalid credentials"},401);
-    if(!env.AUTH_PEPPER||env.AUTH_PEPPER.length<32)
+    if(!env.ADMIN_TOKEN||env.ADMIN_TOKEN.length<32)
       return json({error:"Password service not configured"},503);
     const account=await owner(env);
     if(!account || account.locked_until>nowSeconds())
