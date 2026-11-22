@@ -17,6 +17,8 @@ jobs:
           node-version: '22'
       - name: Run catalog API tests
         run: node --test backend/tests/*.test.mjs
+      - name: Check Windows optimizer Python syntax
+        run: python -m py_compile tools/processor/addisreel_processor.py
 
   build:
     runs-on: ubuntu-latest
