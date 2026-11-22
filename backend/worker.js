@@ -138,9 +138,13 @@ export default {
       if (request.method === "GET" && play) {
         const e = await playableEpisode(env,play[1],Number(play[2]));
         if (!e) return fail("Episode unavailable",404);
+        const base = url.origin + "/v1/media/" + e.series_id + "/" + e.number + "/";
+        const hls = await env.MEDIA.head(e.media_prefix + "/master.m3u8");
+        const mp4 = hls ? null : await env.MEDIA.head(e.media_prefix + "/source.mp4");
+        if (!hls && !mp4) return fail("Episode media is not ready",404);
         return reply({seriesId:e.series_id,episode:e.number,title:e.title,
-          playbackUrl:url.origin + "/v1/media/" + e.series_id + "/" + e.number + "/master.m3u8",
-          format:"hls"});
+          playbackUrl:base + (hls ? "master.m3u8" : "source.mp4"),
+          format:hls ? "hls" : "mp4"});
       }
       const media = /^\/v1\/media\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
       if (request.method === "GET" && media) {
@@ -191,8 +195,9 @@ export default {
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
           if (d.status === "published" && d.licensed === true &&
-              !await env.MEDIA.head(prefix + "/master.m3u8"))
-            return fail("Upload master.m3u8 before publishing this episode",409,false);
+              !await env.MEDIA.head(prefix + "/master.m3u8") &&
+              !await env.MEDIA.head(prefix + "/source.mp4"))
+            return fail("Upload master.m3u8 or source.mp4 before publishing this episode",409,false);
           await env.DB.prepare(
             "INSERT INTO episodes(series_id,number,title,media_prefix,duration_seconds,status,licensed) VALUES(?,?,?,?,?,?,?) " +
             "ON CONFLICT(series_id,number) DO UPDATE SET title=excluded.title,media_prefix=excluded.media_prefix," +
