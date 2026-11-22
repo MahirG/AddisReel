@@ -300,8 +300,43 @@ private fun AddisReelApp() {
                     }
                     2 -> {
                         Header("My Library")
-                        if(saved.isEmpty()) Text("Save a series to watch it later.",Modifier.padding(20.dp),color=Color.LightGray)
-                        else LazyColumn { items(catalog.filter{it.title in saved}) { drama -> DramaRow(drama){selectDrama(drama);tab=0} } }
+                        if (saved.isEmpty()) {
+                            Column(
+                                Modifier.fillMaxWidth().padding(28.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
+                                Text("Your collection starts here", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text("Save Ethiopian dramas to find them here later.", color = Color.LightGray)
+                                Button(onClick = { tab = 1 }) { Text("Explore dramas") }
+                            }
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                item { Text("${saved.size} saved series", color = Color.LightGray) }
+                                items(catalog.filter { it.title in saved }) { drama ->
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        DramaRow(drama) { selectDrama(drama); tab = 0 }
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            val lastEpisode = preferences.getInt("episode_" + drama.title, 1)
+                                                .coerceIn(1, drama.episodes)
+                                            Text("Continue · Episode $lastEpisode of ${drama.episodes}", color = Gold, fontSize = 12.sp)
+                                            TextButton(onClick = { toggleSaved(drama.title) }) {
+                                                Icon(Icons.Default.BookmarkRemove, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Text("Remove")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     else -> {
                         Header("AddisReel Premium")
