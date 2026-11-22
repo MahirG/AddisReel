@@ -1,6 +1,6 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id("org.jetbrains.kotlin.plugin.compose") }
 android { namespace = "et.addisreel.app"; compileSdk = 35
- defaultConfig { applicationId = "et.addisreel.app"; minSdk = 24; targetSdk = 35; versionCode = 2; versionName = "0.1.1" }
+ defaultConfig { applicationId = "et.addisreel.app"; minSdk = 24; targetSdk = 35; versionCode = 3; versionName = "0.1.2" }
  signingConfigs {
   create("production") {
    val keystorePath = System.getenv("ADDISREEL_KEYSTORE_PATH")
