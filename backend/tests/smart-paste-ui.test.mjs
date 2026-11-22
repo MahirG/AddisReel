@@ -66,7 +66,7 @@ function makeStudio(series, episodes) {
     document: {getElementById:el,createElement:element},
     window: {scrollTo() {}},
     navigator: {},
-    fetch, parseMovieFields, console
+    fetch, parseMovieFields, console, Blob
   });
   return {el,writes};
 }
