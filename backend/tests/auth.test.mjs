@@ -123,3 +123,24 @@ test("password and setup flows enforce valid origin and strong passwords",async(
  assert.equal(response.status,400);
  assert.match((await response.json()).error,/12/);
 });
+
+
+test("expired login lockout resets failed-attempt window",async()=>{
+ const {DB,state}=fakeDB(),env={DB,ADMIN_TOKEN:token};
+ const setup=options("/v1/auth/setup","POST",{setupToken:token,email,password});
+ assert.equal((await handleAuth(setup,env,new URL(setup.url))).status,201);
+ for(let i=0;i<5;i++){
+   const bad=options("/v1/auth/login","POST",{email,password:"incorrect"});
+   assert.equal((await handleAuth(bad,env,new URL(bad.url))).status,401);
+ }
+ assert.equal(state.account.failed_attempts,5);
+ assert.ok(state.account.locked_until>0);
+ // Simulate passage of the lockout period without waiting in real time.
+ state.account.locked_until=1;
+ const retry=options("/v1/auth/login","POST",{email,password:"still incorrect"});
+ assert.equal((await handleAuth(retry,env,new URL(retry.url))).status,401);
+ assert.equal(state.account.failed_attempts,1);
+ assert.equal(state.account.locked_until,0);
+ const correct=options("/v1/auth/login","POST",{email,password});
+ assert.equal((await handleAuth(correct,env,new URL(correct.url))).status,200);
+});
