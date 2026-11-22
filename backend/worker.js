@@ -2,6 +2,7 @@ import { studioHtml } from "./studio.js";
 import { clientScript } from "./client.js";
 import { wizardScript } from "./wizard.js";
 import { handleMultipartUpload } from "./multipart.js";
+import { queueOptimization, optimizationStatus, handleAdminOptimization, handleProcessor } from "./processor-api.js";
 import { manifest, serviceWorker } from "./pwa.js";
 import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
@@ -86,6 +87,7 @@ export default {
       if (request.method === "GET" && path === "/health")
         return reply({status:"ok",service:"addisreel-catalog",phase:3});
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
+      if (path.startsWith("/v1/processor/")) return handleProcessor(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
         return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
           headers:{"Content-Type":"application/javascript; charset=utf-8",
@@ -145,13 +147,15 @@ export default {
         if (!e) return fail("Episode unavailable",404);
         const prefix = "/v1/media/" + e.series_id + "/" + e.number + "/";
         // Existing HLS stays supported. New simple MP4 uploads play directly on Android.
-        const hasHls = await env.MEDIA.head(e.media_prefix + "/master.m3u8");
-        const hasMp4 = hasHls ? false : await env.MEDIA.head(e.media_prefix + "/video.mp4");
-        if (!hasHls && !hasMp4) return fail("Video not ready",404);
+        const optimized = await optimizationStatus(env,e.series_id,e.number);
+        const hasOptimized = optimized?.status==="ready" && !!await env.MEDIA.head(e.media_prefix+"/optimized.mp4");
+        const hasHls = hasOptimized ? false : await env.MEDIA.head(e.media_prefix + "/master.m3u8");
+        const hasMp4 = (hasOptimized||hasHls) ? false : await env.MEDIA.head(e.media_prefix + "/video.mp4");
+        if (!hasOptimized && !hasHls && !hasMp4) return fail("Video not ready",404);
         const format = hasHls ? "hls" : "mp4";
+        const file = hasOptimized ? "optimized.mp4" : hasHls ? "master.m3u8" : "video.mp4";
         return reply({seriesId:e.series_id,episode:e.number,title:e.title,
-          playbackUrl:url.origin + prefix + (hasHls ? "master.m3u8" : "video.mp4"),
-          format});
+          playbackUrl:url.origin + prefix + file,format,optimized:hasOptimized});
       }
       const media = /^\/v1\/media\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
       if (request.method === "GET" && media) {
@@ -174,6 +178,8 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        if(path.startsWith("/v1/admin/optimization/"))
+          return handleAdminOptimization(request,env,url);
         const multipartPath=/^\/v1\/admin\/uploads\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
         if(multipartPath) return handleMultipartUpload(request,env,url,multipartPath[1],Number(multipartPath[2]));
         // Admin artwork and draft video previews are private even when the series is unpublished.
@@ -206,8 +212,11 @@ export default {
           if (!e) return fail("Episode not found",404,false);
           const mp4=await env.MEDIA.head(e.media_prefix+"/video.mp4");
           const hls=await env.MEDIA.head(e.media_prefix+"/master.m3u8");
-          return reply({ready:!!(mp4||hls),format:hls?"hls":mp4?"mp4":null,
-            sizeBytes:mp4?.size??null},200,false);
+          const job=await optimizationStatus(env,mediaStatus[1],Number(mediaStatus[2]));
+          const optimized = job?.status==="ready" && !!await env.MEDIA.head(e.media_prefix+"/optimized.mp4");
+          return reply({ready:!!(mp4||hls),format:optimized?"mp4":hls?"hls":mp4?"mp4":null,
+            sizeBytes:mp4?.size??null,optimizationStatus:job?.status||null,
+            optimizedBytes:job?.optimized_bytes??null},200,false);
         }
         if (request.method === "GET" && path === "/v1/admin/series") {
           const s=await env.DB.prepare("SELECT * FROM series ORDER BY sort_order,created_at DESC").all();
@@ -279,7 +288,8 @@ export default {
           const key=e.media_prefix+"/video.mp4";
           const object=await env.MEDIA.put(key,request.body,{httpMetadata:{contentType:"video/mp4"}});
           if(object.size>90*1024*1024) {await env.MEDIA.delete(key);return fail("Video exceeds the 90 MB upload limit",413,false);}
-          return reply({uploaded:true,bytes:object.size,format:"mp4"},200,false);
+          await queueOptimization(env,directMp4[1],Number(directMp4[2]),object.size);
+          return reply({uploaded:true,bytes:object.size,format:"mp4",optimization:"queued"},200,false);
         }
         const upHls=/^\/v1\/admin\/hls\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
         if (request.method === "PUT" && upHls) {
