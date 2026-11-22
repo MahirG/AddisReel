@@ -25,12 +25,13 @@ function browser(initial,records={series:[],episodes:[]}) {
     else if(path==="/v1/admin/series")json=records;
     else if(path==="/v1/auth/logout")json={authenticated:false};
     else if(path==="/v1/auth/login")json={authenticated:true,email:"admin@example.com"};
+    else if(path==="/v1/auth/salt")json={salt:"AbCdEfGhIjKlMnOpQrStUv",iterations:180000};
     else if(path==="/v1/auth/setup")json={authenticated:true,email:"admin@example.com"};
     else {json={saved:true};code=200}
     return {ok:true,status:code,async json(){return json}};
   }
   const doc={readyState:"complete",getElementById:el,querySelectorAll(){return[]}};
-  const window={parseMovieFields,scrollTo(){},addEventListener(){}};
+  const window={parseMovieFields,addisreelPassword:{newSalt(){return "AbCdEfGhIjKlMnOpQrStUv"},async deriveProof(){return "a".repeat(64)}},scrollTo(){},addEventListener(){}};
   vm.runInNewContext(clientScript,{document:doc,window,navigator:{},fetch,Blob,console});
   const settle=()=>new Promise(resolve=>setTimeout(resolve,10));
   return {el,calls,settle};
@@ -62,6 +63,7 @@ test("fresh owner sees one-time account setup, with password-only sign-in after 
  assert.equal(app.el("appShell").hidden,false);
  assert.equal(app.el("authScreen").hidden,true);
  assert.ok(app.calls.some(c=>c.path==="/v1/auth/setup"));
+ assert.ok(!clientScript.includes("localStorage"));
 });
 
 test("authenticated device restores Studio without requesting token on refresh",async()=>{
