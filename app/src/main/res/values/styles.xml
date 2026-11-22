@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+ <style name="Theme.AddisReel" parent="Theme.SplashScreen">
+  <item name="windowSplashScreenBackground">#0C0C10</item>
+  <item name="windowSplashScreenAnimatedIcon">@drawable/ic_addisreel_mark</item>
+  <item name="postSplashScreenTheme">@style/Theme.AddisReel.Main</item>
+ </style>
+ <style name="Theme.AddisReel.Main" parent="android:style/Theme.Material.Light.NoActionBar">
+  <item name="android:windowLightStatusBar">false</item>
+  <item name="android:statusBarColor">#0C0C10</item>
+  <item name="android:navigationBarColor">#0C0C10</item>
+  <item name="android:windowActionModeOverlay">true</item>
+ </style>
+</resources>
