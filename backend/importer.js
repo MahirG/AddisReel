@@ -39,7 +39,7 @@ export function parseMovieFields(input) {
     let continuation = "";
     for (const original of raw.replace(/\r\n?/g,"\n").split("\n")) {
       let line = original.trim().replace(/^[-•]\s*/,"");
-      line = line.replace(/^\*\*([^*]+)\*\*\s*:/,"$1:");
+      line = line.replace(/^\*\*([^*:]+):\*\*\s*/,"$1: ").replace(/^\*\*([^*]+)\*\*\s*:/,"$1:");
       const match = /^([^:]{1,65}):\s*(.*)$/.exec(line);
       const key = match ? keys[match[1].toLowerCase().trim().replace(/\s+/g," ")] : undefined;
       if (key) {
