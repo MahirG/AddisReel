@@ -167,7 +167,7 @@ private fun AddisReelApp() {
         val currentEpisode = episode
         if (seriesId.isNotBlank()) {
             val warm = prefetchedEpisode
-            episodeUrl = if (warm?.first == seriesId && warm.second == currentEpisode) {
+            episodeUrl = if (streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode) {
                 prefetchedEpisode = null
                 warm.third
             } else {
@@ -340,7 +340,11 @@ private fun AddisReelApp() {
                                     }
                                     if (selected.id.isNotBlank() && !streamLoading) {
                                         Spacer(Modifier.height(12.dp))
-                                        Button(onClick = { streamRefresh += 1 }) {
+                                        Button(onClick = {
+                                            // Force a fresh playback URL; never reuse a failed prefetched token.
+                                            prefetchedEpisode = null
+                                            streamRefresh += 1
+                                        }) {
                                             Icon(Icons.Default.Refresh, contentDescription = null)
                                             Spacer(Modifier.width(6.dp))
                                             Text("Retry episode")
