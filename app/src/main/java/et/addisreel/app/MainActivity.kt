@@ -711,18 +711,55 @@ private fun AddisReelApp() {
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Box(
-                Modifier.size(width = 104.dp, height = 144.dp)
-                    .background(Brush.verticalGradient(posterColors), RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center
+                Modifier.size(width = 112.dp, height = 160.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.verticalGradient(posterColors))
             ) {
                 if (drama.posterUrl != null) {
-                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title,
-                        contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
-                } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
-                    Spacer(Modifier.height(8.dp))
-                    Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
-                    Text("Poster coming soon", fontSize = 8.sp, color = Color.LightGray)
+                    AsyncImage(
+                        model = drama.posterUrl,
+                        contentDescription = "Poster for " + drama.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize()
+                    )
+                } else {
+                    Column(
+                        Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
+                        Spacer(Modifier.height(8.dp))
+                        Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
+                        Text("Poster coming soon", fontSize = 8.sp, color = Color.LightGray)
+                    }
+                }
+                Box(
+                    Modifier.fillMaxWidth().height(54.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xDD09090E))))
+                )
+                Text(
+                    if (resumeEpisode != null) "CONTINUE · EP $resumeEpisode" else "${drama.episodes} EPISODES",
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 9.dp, bottom = 9.dp),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                if (drama.id.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopStart).padding(7.dp),
+                        color = Color(0xD9211C12),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            "STREAM",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            color = Gold,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
