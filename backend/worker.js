@@ -148,8 +148,8 @@ export default {
         const prefix = "/v1/media/" + e.series_id + "/" + e.number + "/";
         // Existing HLS stays supported. New simple MP4 uploads play directly on Android.
         const optimized = await optimizationStatus(env,e.series_id,e.number);
-        const hasOptimized = optimized?.status==="ready" && !!await env.MEDIA.head(e.media_prefix+"/optimized.mp4");
-        const hasHls = hasOptimized ? false : await env.MEDIA.head(e.media_prefix + "/master.m3u8");
+        const hasHls = await env.MEDIA.head(e.media_prefix + "/master.m3u8");
+        const hasOptimized = !hasHls && optimized?.status==="ready" && !!await env.MEDIA.head(e.media_prefix+"/optimized.mp4");
         const hasMp4 = (hasOptimized||hasHls) ? false : await env.MEDIA.head(e.media_prefix + "/video.mp4");
         if (!hasOptimized && !hasHls && !hasMp4) return fail("Video not ready",404);
         const format = hasHls ? "hls" : "mp4";
