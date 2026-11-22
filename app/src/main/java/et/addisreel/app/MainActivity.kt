@@ -594,6 +594,16 @@ private fun AddisReelApp() {
         }
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
+    // Avoid flashing a loading spinner for brief, normal buffer transitions.
+    var showBuffering by remember(url, episodeKey) { mutableStateOf(false) }
+    LaunchedEffect(buffering, url, episodeKey) {
+        if (buffering) {
+            delay(450L)
+            showBuffering = true
+        } else {
+            showBuffering = false
+        }
+    }
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
     var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
@@ -675,13 +685,15 @@ private fun AddisReelApp() {
                 PlayerView(it).apply {
                     this.player = player
                     useController = true
+                    controllerShowTimeoutMs = 2500
+                    controllerHideOnTouch = true
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     keepScreenOn = true
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
-        if (buffering && !playbackError) {
+        if (showBuffering && buffering && !playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Gold)
                 Spacer(Modifier.height(12.dp))
