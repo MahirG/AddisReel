@@ -74,7 +74,7 @@ async function serveR2(env, key, path, request) {
   if (!object) return fail("Media unavailable",404);
   const headers = new Headers(publicHeaders);
   headers.set("Content-Type", extType(path));
-  headers.set("Cache-Control", path.endsWith(".m3u8") ? "public, max-age=60" : "public, max-age=86400");
+  headers.set("Cache-Control", path.endsWith(".m3u8") ? "public, max-age=30" : "public, max-age=120");
   headers.set("Accept-Ranges","bytes");
   headers.set("ETag",object.httpEtag);
   if (object.range && range) {
@@ -168,6 +168,9 @@ export default {
           const parent=await env.DB.prepare("SELECT id FROM series WHERE id=?").bind(d.seriesId).first();
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
+          if (d.status === "published" && d.licensed === true &&
+              !await env.MEDIA.head(prefix + "/master.m3u8"))
+            return fail("Upload master.m3u8 before publishing this episode",409,false);
           await env.DB.prepare(
             "INSERT INTO episodes(series_id,number,title,media_prefix,duration_seconds,status,licensed) VALUES(?,?,?,?,?,?,?) " +
             "ON CONFLICT(series_id,number) DO UPDATE SET title=excluded.title,media_prefix=excluded.media_prefix," +
