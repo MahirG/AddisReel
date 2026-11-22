@@ -70,7 +70,7 @@ jobs:
           APK=app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -1 > "$RUNNER_TEMP/package-info"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | sed -n '1p' > "$RUNNER_TEMP/package-info"
           cat "$RUNNER_TEMP/package-info"
           python3 - <<'PY'
           import os, re, json, hashlib, pathlib
