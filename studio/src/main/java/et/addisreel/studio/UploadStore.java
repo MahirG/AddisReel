@@ -24,6 +24,24 @@ final class UploadStore {
         try{value.put("state",state);value.put("message",message);}catch(Exception ignored){}
         save(context,value);
     }
+    static synchronized void checkpoint(Context context,JSONObject session) throws java.io.IOException {
+        JSONObject current=read(context);
+        if(current==null || "paused".equals(current.optString("state")))
+            throw new java.io.IOException("Upload paused or cancelled");
+        try {
+            for(String field:new String[]{"episodeCreated","uploadId","partSize","parts"}){
+                if(session.has(field))current.put(field,session.get(field));
+            }
+        }catch(Exception error){throw new java.io.IOException("Unable to save upload checkpoint",error);}
+        save(context,current);
+    }
+    static synchronized void updateProgress(Context context,String text,int percent) {
+        JSONObject current=read(context);
+        if(current==null||"paused".equals(current.optString("state")))return;
+        try{current.put("message",text);current.put("progress",percent);}
+        catch(Exception ignored){}
+        save(context,current);
+    }
     static synchronized void clear(Context context){
         context.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().remove(KEY).commit();
     }
