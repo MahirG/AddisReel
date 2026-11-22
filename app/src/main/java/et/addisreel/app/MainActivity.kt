@@ -158,8 +158,11 @@ private fun AddisReelApp() {
             episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
         }
     }
-    LaunchedEffect(selected.id, episode) {
+    var streamRefresh by remember { mutableIntStateOf(0) }
+    var streamLoading by remember { mutableStateOf(false) }
+    LaunchedEffect(selected.id, episode, streamRefresh) {
         episodeUrl = null
+        streamLoading = selected.id.isNotBlank()
         val seriesId = selected.id
         val currentEpisode = episode
         if (seriesId.isNotBlank()) {
@@ -174,6 +177,7 @@ private fun AddisReelApp() {
             }
             // Fetch the next episode's short-lived playback URL in advance.
             // Never pre-download media or retain URLs across app launches.
+            streamLoading = false
             if (episodeUrl != null && currentEpisode < selected.episodes) {
                 val nextUrl = runCatching {
                     withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
@@ -313,8 +317,35 @@ private fun AddisReelApp() {
                                 ) {
                                     Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
                                     Spacer(Modifier.height(12.dp))
-                                    Text(if (selected.id.isBlank()) "Ethiopian stories. Coming soon." else "Preparing episode stream", color=Color.LightGray)
-                                    Text(if (selected.id.isBlank()) "Licensed episodes will play here" else "Check your connection if playback does not start",fontSize=12.sp,color=Color.Gray)
+                                    Text(
+                                        when {
+                                            selected.id.isBlank() -> "Ethiopian stories. Coming soon."
+                                            streamLoading -> "Preparing episode stream…"
+                                            else -> "Episode stream unavailable"
+                                        },
+                                        color = Color.LightGray
+                                    )
+                                    Text(
+                                        when {
+                                            selected.id.isBlank() -> "Licensed episodes will play here"
+                                            streamLoading -> "Connecting securely to your episode"
+                                            else -> "Check your internet connection and try again"
+                                        },
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                    if (selected.id.isNotBlank() && streamLoading) {
+                                        Spacer(Modifier.height(12.dp))
+                                        CircularProgressIndicator(color = Gold, modifier = Modifier.size(26.dp))
+                                    }
+                                    if (selected.id.isNotBlank() && !streamLoading) {
+                                        Spacer(Modifier.height(12.dp))
+                                        Button(onClick = { streamRefresh += 1 }) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text("Retry episode")
+                                        }
+                                    }
                                     Spacer(Modifier.height(16.dp))
                                     Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
