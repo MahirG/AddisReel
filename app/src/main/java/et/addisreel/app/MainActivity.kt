@@ -257,6 +257,20 @@ private fun AddisReelApp() {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
+                    val lastReached = preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Your progress · Episode $lastReached", color = Color.LightGray, fontSize = 12.sp)
+                        Spacer(Modifier.weight(1f))
+                        Text("${((lastReached - 1) * 100 / selected.episodes.coerceAtLeast(1))}%", color = Gold, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { (lastReached - 1).toFloat() / selected.episodes.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = Gold,
+                        trackColor = Color(0xFF34343B)
+                    )
                     Spacer(Modifier.height(14.dp))
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp),
@@ -265,6 +279,7 @@ private fun AddisReelApp() {
                     ) {
                         items((1..selected.episodes).toList()) { number ->
                             val active = number == episode
+                            val watched = number < lastReached
                             Surface(
                                 onClick = { selectEpisode(number); showEpisodes = false },
                                 shape = RoundedCornerShape(14.dp),
@@ -276,14 +291,23 @@ private fun AddisReelApp() {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        if (active) Icons.Default.PlayCircle else Icons.Default.Movie,
+                                        if (active) Icons.Default.PlayCircle else if (watched) Icons.Default.CheckCircle else Icons.Default.Movie,
                                         contentDescription = null,
-                                        tint = if (active) Gold else Color.LightGray
+                                        tint = if (active || watched) Gold else Color.LightGray
                                     )
                                     Spacer(Modifier.width(14.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text("Episode $number", fontWeight = FontWeight.SemiBold)
-                                        if (active) Text("Current episode", fontSize = 11.sp, color = Gold)
+                                        Text(
+                                            when {
+                                                active -> "Now playing"
+                                                watched -> "Previously reached"
+                                                number == lastReached -> "Continue here"
+                                                else -> "Tap to watch"
+                                            },
+                                            fontSize = 11.sp,
+                                            color = if (active || watched || number == lastReached) Gold else Color.LightGray
+                                        )
                                     }
 
                                 }
