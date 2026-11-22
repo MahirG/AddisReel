@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -278,11 +279,47 @@ private fun AddisReelApp() {
     }
 }
 @Composable private fun Header(title:String) { Text(title,Modifier.padding(20.dp),fontSize=28.sp,fontWeight=FontWeight.Bold,color=Color.White) }
-@Composable private fun DramaRow(drama:Drama,onClick:()->Unit) {
-    Card(onClick=onClick,modifier=Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xFF202027)),shape=RoundedCornerShape(16.dp)) {
-        Row(Modifier.padding(16.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(16.dp)) {
-            Box(Modifier.size(width=92.dp,height=116.dp).background(Color(0xFF393039),RoundedCornerShape(10.dp)),contentAlignment=Alignment.Center) { Icon(Icons.Default.Movie,null,Modifier.size(40.dp),tint=Gold) }
-            Column { Text(drama.title,fontWeight=FontWeight.Bold,fontSize=20.sp);Text("${drama.genre} • ${drama.episodes} episodes",color=Gold,fontSize=12.sp); Spacer(Modifier.height(8.dp));Text(drama.description,maxLines=3,overflow=TextOverflow.Ellipsis,color=Color.LightGray,fontSize=13.sp) }
+@Composable private fun DramaRow(drama: Drama, onClick: () -> Unit) {
+    val posterColors = when (drama.genre) {
+        "Romance" -> listOf(Color(0xFF70334E), Color(0xFF24121F))
+        "Mystery" -> listOf(Color(0xFF244B5B), Color(0xFF101C29))
+        "Family" -> listOf(Color(0xFF6A512E), Color(0xFF241B17))
+        else -> listOf(Color(0xFF543E66), Color(0xFF1B1729))
+    }
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1D1D24))
+    ) {
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                Modifier.size(width = 104.dp, height = 144.dp)
+                    .background(Brush.verticalGradient(posterColors), RoundedCornerShape(14.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
+                    Text("Poster coming soon", fontSize = 8.sp, color = Color.LightGray)
+                }
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text(drama.title, fontWeight = FontWeight.Bold, fontSize = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(drama.genre.uppercase(), color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("${drama.episodes} short episodes", fontSize = 12.sp, color = Color.LightGray)
+                Text(drama.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color.LightGray)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
+                    Spacer(Modifier.width(5.dp))
+                    Text("View series details", fontSize = 11.sp, color = Gold)
+                }
+            }
         }
     }
 }
