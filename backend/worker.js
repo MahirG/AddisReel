@@ -163,6 +163,10 @@ export default {
         let file;
         try { file=decodeURIComponent(media[3]); } catch { return fail("Invalid media filename"); }
         if (!e || !fileOK(file)) return fail("Media unavailable",404);
+        if(file==="optimized.mp4") {
+          const job=await optimizationStatus(env,media[1],Number(media[2]));
+          if(job?.status!=="ready")return fail("Optimized video not verified",404);
+        }
         return serveR2(env,e.media_prefix + "/" + file,file,request);
       }
       const poster = /^\/v1\/posters\/([a-z0-9-]+)$/.exec(path);
