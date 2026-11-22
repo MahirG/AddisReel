@@ -265,15 +265,16 @@ export default {
             return fail("Please choose an MP4 video",415,false);
           // Keep below the standard Workers request-body limit. Larger files require
           // direct-to-storage resumable uploads or Cloudflare Stream (not enabled yet).
-          const size=Number(request.headers.get("Content-Length"));
+          const size=Number(request.headers.get("Content-Length") || request.headers.get("X-Upload-Size"));
           if (!Number.isSafeInteger(size) || size<1 || size>90*1024*1024)
             return fail("Choose an MP4 under 90 MB. Large-video processing is not configured yet.",413,false);
           const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
             .bind(directMp4[1],Number(directMp4[2])).first();
           if (!e) return fail("Save your episode details before uploading video",404,false);
           const key=e.media_prefix+"/video.mp4";
-          await env.MEDIA.put(key,request.body,{httpMetadata:{contentType:"video/mp4"}});
-          return reply({uploaded:true,bytes:size,format:"mp4"},200,false);
+          const object=await env.MEDIA.put(key,request.body,{httpMetadata:{contentType:"video/mp4"}});
+          if(object.size>90*1024*1024) {await env.MEDIA.delete(key);return fail("Video exceeds the 90 MB upload limit",413,false);}
+          return reply({uploaded:true,bytes:object.size,format:"mp4"},200,false);
         }
         const upHls=/^\/v1\/admin\/hls\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
         if (request.method === "PUT" && upHls) {
