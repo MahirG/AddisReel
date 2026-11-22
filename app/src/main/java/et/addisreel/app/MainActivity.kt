@@ -42,6 +42,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -556,7 +557,16 @@ private fun AddisReelApp() {
     // Stable episode identity survives refreshed or signed playback URLs.
     val positionKey = remember(episodeKey) { "position_" + episodeKey }
     val player = remember(url, episodeKey) {
-        ExoPlayer.Builder(context).build().apply {
+        // Keep enough video buffered for variable mobile networks without excessive data use.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                15_000, // minimum playback buffer
+                50_000, // maximum playback buffer
+                1_500,  // start playback promptly
+                3_000   // resume after rebuffering
+            )
+            .build()
+        ExoPlayer.Builder(context).setLoadControl(loadControl).build().apply {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
             if (savedPosition > 0L) seekTo(savedPosition)
