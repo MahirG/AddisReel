@@ -112,6 +112,8 @@ private fun AddisReelApp() {
     var catalog by remember { mutableStateOf(previewCatalog) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
+    // Prefetch only the next playback URL (not the video bytes) to avoid extra mobile data.
+    var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
@@ -150,10 +152,26 @@ private fun AddisReelApp() {
     }
     LaunchedEffect(selected.id, episode) {
         episodeUrl = null
-        if (selected.id.isNotBlank()) {
-            episodeUrl = runCatching {
-                withContext(Dispatchers.IO) { fetchEpisodeStream(selected.id, episode) }
-            }.getOrNull()
+        val seriesId = selected.id
+        val currentEpisode = episode
+        if (seriesId.isNotBlank()) {
+            val warm = prefetchedEpisode
+            episodeUrl = if (warm?.first == seriesId && warm.second == currentEpisode) {
+                prefetchedEpisode = null
+                warm.third
+            } else {
+                runCatching {
+                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode) }
+                }.getOrNull()
+            }
+            // Fetch the next episode's short-lived playback URL in advance.
+            // Never pre-download media or retain URLs across app launches.
+            if (episodeUrl != null && currentEpisode < selected.episodes) {
+                val nextUrl = runCatching {
+                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
+                }.getOrNull()
+                prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
+            }
         }
     }
     var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
