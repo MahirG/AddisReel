@@ -10,10 +10,10 @@ export default {
       const object = await env.RELEASES.get("releases/latest.json");
       if (!object) return Response.json({ error: "No published update" }, { status: 404, headers });
       const manifest = await object.json();
-      if (!/^\\d+\\.\\d+\\.\\d+$/.test(manifest.version) ||
-          !/^\\d+$/.test(String(manifest.versionCode)) ||
+      if (!/^\d+\.\d+\.\d+$/.test(manifest.version) ||
+          !/^\d+$/.test(String(manifest.versionCode)) ||
           !/^[a-f0-9]{64}$/i.test(manifest.sha256) ||
-          !/^releases\\/[a-zA-Z0-9._-]+\\/AddisReel\\.apk$/.test(manifest.objectKey)) {
+          !/^releases\/[a-zA-Z0-9._-]+\/AddisReel\.apk$/.test(manifest.objectKey)) {
         return Response.json({ error: "Invalid release metadata" }, { status: 503, headers });
       }
       return Response.json({
@@ -24,7 +24,7 @@ export default {
         apkUrl: `${url.origin}/v1/apk/${encodeURIComponent(manifest.version)}`
       }, { headers });
     }
-    const match = url.pathname.match(/^\\/v1\\/apk\\/(\\d+\\.\\d+\\.\\d+)$/);
+    const match = url.pathname.match(/^\/v1\/apk\/(\d+\.\d+\.\d+)$/);
     if (match) {
       const key = `releases/${match[1]}/AddisReel.apk`;
       const object = await env.RELEASES.get(key);
