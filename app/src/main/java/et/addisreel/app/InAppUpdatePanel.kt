@@ -40,7 +40,7 @@ fun InAppUpdatePanel() {
             status = "Checking for updates…"
             Thread {
                 try {
-                    val latest = AppUpdater.check(currentVersion)
+                    val latest = AppUpdater.check(currentVersion, currentCode)
                     ui {
                         release = latest
                         status = if (latest == null) "You're up to date. No newer published release found."
