@@ -1,6 +1,10 @@
 package et.addisreel.app
 
 import android.os.Bundle
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
@@ -42,6 +46,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -111,6 +116,8 @@ private fun AddisReelApp() {
     var catalog by remember { mutableStateOf(previewCatalog) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
+    // Prefetch only the next playback URL (not the video bytes) to avoid extra mobile data.
+    var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
@@ -149,10 +156,26 @@ private fun AddisReelApp() {
     }
     LaunchedEffect(selected.id, episode) {
         episodeUrl = null
-        if (selected.id.isNotBlank()) {
-            episodeUrl = runCatching {
-                withContext(Dispatchers.IO) { fetchEpisodeStream(selected.id, episode) }
-            }.getOrNull()
+        val seriesId = selected.id
+        val currentEpisode = episode
+        if (seriesId.isNotBlank()) {
+            val warm = prefetchedEpisode
+            episodeUrl = if (warm?.first == seriesId && warm.second == currentEpisode) {
+                prefetchedEpisode = null
+                warm.third
+            } else {
+                runCatching {
+                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode) }
+                }.getOrNull()
+            }
+            // Fetch the next episode's short-lived playback URL in advance.
+            // Never pre-download media or retain URLs across app launches.
+            if (episodeUrl != null && currentEpisode < selected.episodes) {
+                val nextUrl = runCatching {
+                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
+                }.getOrNull()
+                prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
+            }
         }
     }
     var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
@@ -555,8 +578,38 @@ private fun AddisReelApp() {
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
     // Stable episode identity survives refreshed or signed playback URLs.
     val positionKey = remember(episodeKey) { "position_" + episodeKey }
+    val connectivity = remember(context) {
+        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    }
+    fun hasInternet(): Boolean {
+        val active = connectivity.activeNetwork ?: return false
+        return connectivity.getNetworkCapabilities(active)
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }
+    var isOnline by remember(url, episodeKey) { mutableStateOf(hasInternet()) }
+    DisposableEffect(connectivity, url, episodeKey) {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                isOnline = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+            override fun onLost(network: Network) {
+                isOnline = hasInternet()
+            }
+        }
+        connectivity.registerDefaultNetworkCallback(callback)
+        onDispose { connectivity.unregisterNetworkCallback(callback) }
+    }
     val player = remember(url, episodeKey) {
-        ExoPlayer.Builder(context).build().apply {
+        // Keep enough video buffered for variable mobile networks without excessive data use.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                15_000, // minimum playback buffer
+                50_000, // maximum playback buffer
+                1_500,  // start playback promptly
+                3_000   // resume after rebuffering
+            )
+            .build()
+        ExoPlayer.Builder(context).setLoadControl(loadControl).build().apply {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
             if (savedPosition > 0L) seekTo(savedPosition)
@@ -566,9 +619,63 @@ private fun AddisReelApp() {
         }
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
+    // Avoid flashing a loading spinner for brief, normal buffer transitions.
+    var showBuffering by remember(url, episodeKey) { mutableStateOf(false) }
+    LaunchedEffect(buffering, url, episodeKey) {
+        if (buffering) {
+            delay(450L)
+            showBuffering = true
+        } else {
+            showBuffering = false
+        }
+    }
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
     var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
+    var failurePositionMs by remember(url, episodeKey) {
+        mutableLongStateOf(preferences.getLong(positionKey, 0L))
+    }
+    var inForeground by remember(url, episodeKey) {
+        mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    var observedOutage by remember(url, episodeKey) { mutableStateOf(!isOnline) }
+    LaunchedEffect(isOnline) {
+        if (!isOnline) {
+            observedOutage = true
+        } else if (observedOutage) {
+            // A restored connection deserves a fresh, bounded retry budget.
+            retryCount = 0
+            observedOutage = false
+        }
+    }
+    // Persist a short-drama resume point even when Android terminates the process
+    // without delivering an activity stop or a Compose disposal callback.
+    LaunchedEffect(player, positionKey) {
+        while (true) {
+            delay(5_000L)
+            if (player.isPlaying && player.playbackState != Player.STATE_ENDED) {
+                val position = player.currentPosition
+                val duration = player.duration
+                if (position > 0L && (duration <= 0L || position < duration - 1_000L)) {
+                    preferences.edit().putLong(positionKey, position).apply()
+                }
+            }
+        }
+    }
+    // ExoPlayer can remain in BUFFERING without emitting an error on weak
+    // connections. Detect a prolonged stall and use the same bounded retry path.
+    LaunchedEffect(buffering, isOnline, inForeground, playbackError, player) {
+        if (buffering && isOnline && inForeground && !playbackError) {
+            delay(12_000L)
+            if (player.playbackState == Player.STATE_BUFFERING && !playbackError) {
+                failurePositionMs = player.currentPosition.coerceAtLeast(0L)
+                if (failurePositionMs > 0L) {
+                    preferences.edit().putLong(positionKey, failurePositionMs).apply()
+                }
+                playbackError = true
+            }
+        }
+    }
     var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
     var nextCountdown by remember(url, episodeKey) { mutableIntStateOf(3) }
     var nextRequested by remember(url, episodeKey) { mutableStateOf(false) }
@@ -586,22 +693,27 @@ private fun AddisReelApp() {
             }
         }
     }
-    LaunchedEffect(playbackError, retryCount, player) {
-        if (playbackError && retryCount < 2) {
+    LaunchedEffect(playbackError, retryCount, isOnline, inForeground, player) {
+        if (playbackError && isOnline && inForeground && retryCount < 3) {
             retryPending = true
-            delay(if (retryCount == 0) 1500L else 3500L)
-            retryCount += 1
-            playbackError = false
-            buffering = true
+            // Back off repeated failures; never spin endlessly on a bad stream.
+            delay(when (retryCount) { 0 -> 800L; 1 -> 2000L; else -> 4000L })
+            if (isOnline && inForeground) {
+                retryCount += 1
+                player.seekTo(failurePositionMs)
+                player.prepare()
+                player.playWhenReady = true
+                buffering = true
+                playbackError = false
+            }
             retryPending = false
-            player.prepare()
-            player.playWhenReady = true
-        } else if (!playbackError) {
+        } else {
             retryPending = false
         }
     }
-    DisposableEffect(player) {
+    DisposableEffect(player, lifecycleOwner) {
         var completed = false
+        var wasPlayingBeforeBackground = false
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
@@ -609,6 +721,8 @@ private fun AddisReelApp() {
                 if (state == Player.STATE_READY) {
                     retryCount = 0
                     playbackError = false
+                    // A replayed episode must save its position again if interrupted.
+                    if (completed && player.currentPosition < 1000L) completed = false
                 }
                 if (state == Player.STATE_ENDED && !completed) {
                     completed = true
@@ -616,16 +730,32 @@ private fun AddisReelApp() {
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
+                failurePositionMs = player.currentPosition.coerceAtLeast(0L)
+                if (failurePositionMs > 0L) {
+                    preferences.edit().putLong(positionKey, failurePositionMs).apply()
+                }
                 buffering = false
                 playbackError = true
             }
         }
         val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) {
-                if (!completed && player.currentPosition > 0L) {
-                    preferences.edit().putLong(positionKey, player.currentPosition).apply()
+            when (event) {
+                Lifecycle.Event.ON_START -> {
+                    inForeground = true
+                    if (wasPlayingBeforeBackground && !playbackError && !completed) {
+                        player.play()
+                    }
+                    wasPlayingBeforeBackground = false
                 }
-                player.pause()
+                Lifecycle.Event.ON_STOP -> {
+                    inForeground = false
+                    wasPlayingBeforeBackground = player.playWhenReady && !completed
+                    if (!completed && player.currentPosition > 0L) {
+                        preferences.edit().putLong(positionKey, player.currentPosition).apply()
+                    }
+                    player.pause()
+                }
+                else -> Unit
             }
         }
         player.addListener(listener)
@@ -645,17 +775,23 @@ private fun AddisReelApp() {
                 PlayerView(it).apply {
                     this.player = player
                     useController = true
+                    controllerShowTimeoutMs = 2500
+                    controllerHideOnTouch = true
                     resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                     keepScreenOn = true
                 }
             },
             modifier = Modifier.fillMaxSize()
         )
-        if (buffering && !playbackError) {
+        if (showBuffering && buffering && !playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Gold)
                 Spacer(Modifier.height(12.dp))
-                Text("Preparing your episode…", color = Color.White, fontSize = 13.sp)
+                Text(
+                    if (isOnline) "Preparing your episode…" else "Internet disconnected — waiting to reconnect",
+                    color = Color.White,
+                    fontSize = 13.sp
+                )
             }
         }
         if (playbackEnded && !playbackError) {
@@ -674,15 +810,22 @@ private fun AddisReelApp() {
                         Text("Play next now")
                     }
                     TextButton(onClick = {
-                        nextRequested = true
+                        nextRequested = false
                         playbackEnded = false
+                        nextCountdown = 3
                         player.seekTo(0)
                         player.play()
                     }) { Text("Replay this episode", color = Color.White) }
                 } else {
                     Text("You finished this series", color = Color.White)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
+                    Button(onClick = {
+                        playbackEnded = false
+                        nextRequested = false
+                        nextCountdown = 3
+                        player.seekTo(0)
+                        player.play()
+                    }) {
                         Icon(Icons.Default.Replay, contentDescription = null)
                         Text("Replay episode")
                     }
@@ -690,18 +833,32 @@ private fun AddisReelApp() {
             }
         }
         if (playbackError) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (retryPending) "Connection interrupted — reconnecting…" else "Video couldn't load", color = Color.White)
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    when {
+                        !isOnline -> "You're offline. Playback will retry when internet returns."
+                        !inForeground -> "Playback paused in the background"
+                        retryPending -> "Connection interrupted — reconnecting…"
+                        retryCount >= 3 -> "Can't play right now. Check your connection and try again."
+                        else -> "Video interrupted. Preparing to reconnect…"
+                    },
+                    color = Color.White
+                )
                 Spacer(Modifier.height(8.dp))
-                if (retryPending) {
+                if (retryPending && isOnline) {
                     CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
-                } else {
+                } else if (isOnline && inForeground) {
                     Button(onClick = {
-                        retryCount = 2
-                        playbackError = false
-                        buffering = true
+                        retryCount = 0
+                        failurePositionMs = player.currentPosition.coerceAtLeast(failurePositionMs)
+                        player.seekTo(failurePositionMs)
                         player.prepare()
                         player.playWhenReady = true
+                        buffering = true
+                        playbackError = false
                     }) { Text("Try again") }
                 }
             }
