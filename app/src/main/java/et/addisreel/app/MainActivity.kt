@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
         setContent { AddisReelApp() }
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddisReelApp() {
     val context = LocalContext.current
