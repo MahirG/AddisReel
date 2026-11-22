@@ -63,6 +63,7 @@ private fun AddisReelApp() {
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
+    var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
     fun selectDrama(drama: Drama) {
         recentlyWatched = drama.title
         preferences.edit().putString("recently_watched", drama.title).apply()
@@ -76,7 +77,6 @@ private fun AddisReelApp() {
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
-    var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
     var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
     fun toggleSaved(title: String) {
         val updated = if (title in saved) saved - title else saved + title
@@ -191,6 +191,8 @@ private fun AddisReelApp() {
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
                                 Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(progress = { episode.toFloat() / selected.episodes.toFloat() }, modifier = Modifier.fillMaxWidth().height(4.dp), color = Gold, trackColor = Color(0xFF34343B))
                                 Text(selected.description,maxLines=2,overflow=TextOverflow.Ellipsis,color=Color.LightGray)
                                 TextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
                                 Spacer(Modifier.height(12.dp))
