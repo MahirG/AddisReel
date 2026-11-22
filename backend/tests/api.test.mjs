@@ -57,3 +57,16 @@ test("admin interface serves a non-cacheable, framed-denied page", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.match(await response.text(), /CONTENT STUDIO/);
 });
+
+test("Content Studio serves Smart Paste controls and same-origin parser", async () => {
+  const page = await worker.fetch(request("/admin"), { DB: emptyDB });
+  const html = await page.text();
+  assert.match(html, /Paste &amp; auto-fill/);
+  assert.match(html, /saveImported/);
+  assert.match(html, /\/admin\/importer\.js/);
+  assert.match(page.headers.get("content-security-policy"), /script-src 'self'/);
+  const response = await worker.fetch(request("/admin/importer.js"), { DB: emptyDB });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /javascript/);
+  assert.match(await response.text(), /parseMovieFields/);
+});
