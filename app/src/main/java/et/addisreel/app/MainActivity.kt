@@ -48,6 +48,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.PlayerView
 
 private val Gold = Color(0xFFFFC857)
@@ -813,16 +814,27 @@ private fun AddisReelApp() {
         onDispose { connectivity.unregisterNetworkCallback(callback) }
     }
     val player = remember(url, episodeKey) {
+        // Prefer adaptive bitrate on weak or metered networks. The HLS master
+        // playlist must offer multiple renditions for quality switching to work.
+        val metered = connectivity.isActiveNetworkMetered
+        val trackSelector = DefaultTrackSelector(context).apply {
+            if (metered) {
+                setParameters(buildUponParameters().setMaxVideoBitrate(1_500_000))
+            }
+        }
         // Keep enough video buffered for variable mobile networks without excessive data use.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15_000, // minimum playback buffer
-                50_000, // maximum playback buffer
-                1_500,  // start playback promptly
-                3_000   // resume after rebuffering
+                if (metered) 8_000 else 15_000,  // lower memory/data buffering on metered links
+                if (metered) 25_000 else 50_000,
+                1_000, // start playback promptly
+                2_500  // resume after rebuffering
             )
             .build()
-        ExoPlayer.Builder(context).setLoadControl(loadControl).build().apply {
+        ExoPlayer.Builder(context)
+            .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
+            .build().apply {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
             if (savedPosition > 0L) seekTo(savedPosition)
@@ -878,9 +890,9 @@ private fun AddisReelApp() {
     // ExoPlayer can remain in BUFFERING without emitting an error on weak
     // connections. Detect a prolonged stall and use the same bounded retry path.
     LaunchedEffect(buffering, isOnline, inForeground, playbackError, player) {
-        if (buffering && isOnline && inForeground && !playbackError) {
-            delay(12_000L)
-            if (player.playbackState == Player.STATE_BUFFERING && !playbackError) {
+        if (buffering && isOnline && inForeground && player.playWhenReady && !playbackError) {
+            delay(15_000L)
+            if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING && !playbackError) {
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
                 if (failurePositionMs > 0L) {
                     preferences.edit().putLong(positionKey, failurePositionMs).apply()
