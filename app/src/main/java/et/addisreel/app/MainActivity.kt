@@ -1,6 +1,11 @@
 package et.addisreel.app
 
 import android.os.Bundle
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -38,13 +43,54 @@ import androidx.media3.ui.PlayerView
 
 private val Gold = Color(0xFFFFC857)
 private val Dark = Color(0xFF0C0C10)
-private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null)
-private val catalog = listOf(
+private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null, val id:String = "")
+private const val CATALOG_API = "https://addisreel-catalog.eddieaman475.workers.dev"
+private val previewCatalog = listOf(
     Drama("Addis Love", "Romance", 12, "A story of love, family and difficult choices in Addis Ababa."),
     Drama("The Last Promise", "Drama", 8, "An Ethiopian family faces a life-changing secret."),
     Drama("Jimma Nights", "Mystery", 10, "A mystery unfolds over one unforgettable night."),
     Drama("Our Tomorrow", "Family", 6, "Two generations discover what truly matters.")
 )
+private fun catalogResponse(path: String): JSONObject {
+    val connection = (URL(CATALOG_API + path).openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 6000
+        readTimeout = 6000
+        setRequestProperty("Accept", "application/json")
+    }
+    try {
+        if (connection.responseCode !in 200..299) {
+            throw IllegalStateException("Catalog HTTP " + connection.responseCode)
+        }
+        return JSONObject(connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() })
+    } finally {
+        connection.disconnect()
+    }
+}
+private fun fetchPublishedCatalog(): List<Drama> {
+    val result = catalogResponse("/v1/catalog").getJSONArray("series")
+    return buildList {
+        for (i in 0 until result.length()) {
+            val item = result.getJSONObject(i)
+            val id = item.getString("id")
+            val episodeCount = item.optInt("episodes", 0)
+            if (episodeCount > 0 && id.matches(Regex("[a-z0-9][a-z0-9-]{0,63}"))) {
+                add(Drama(
+                    title = item.getString("title"),
+                    genre = item.getString("genre"),
+                    episodes = episodeCount,
+                    description = item.optString("description", ""),
+                    id = id
+                ))
+            }
+        }
+    }
+}
+private fun fetchEpisodeStream(id: String, episode: Int): String? {
+    val url = catalogResponse("/v1/play/" + id + "/" + episode).optString("playbackUrl")
+    return url.takeIf { it.startsWith(CATALOG_API + "/v1/media/") && it.endsWith(".m3u8") }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -57,6 +103,9 @@ class MainActivity : ComponentActivity() {
 private fun AddisReelApp() {
     val context = LocalContext.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
+    var catalog by remember { mutableStateOf(previewCatalog) }
+    var remoteCatalogAvailable by remember { mutableStateOf(false) }
+    var episodeUrl by remember { mutableStateOf<String?>(null) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
@@ -83,6 +132,24 @@ private fun AddisReelApp() {
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
+    LaunchedEffect(Unit) {
+        val remote = runCatching { withContext(Dispatchers.IO) { fetchPublishedCatalog() } }.getOrNull()
+        if (!remote.isNullOrEmpty()) {
+            catalog = remote
+            remoteCatalogAvailable = true
+            val restored = remote.find { it.title == recentlyWatched } ?: remote.first()
+            selected = restored
+            episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
+        }
+    }
+    LaunchedEffect(selected.id, episode) {
+        episodeUrl = null
+        if (selected.id.isNotBlank()) {
+            episodeUrl = runCatching {
+                withContext(Dispatchers.IO) { fetchEpisodeStream(selected.id, episode) }
+            }.getOrNull()
+        }
+    }
     var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
     fun toggleSaved(title: String) {
         val updated = if (title in saved) saved - title else saved + title
@@ -101,7 +168,7 @@ private fun AddisReelApp() {
                         Text(drama.genre + "  •  " + drama.episodes + " episodes", color = Gold)
                         Text(drama.description)
                         Text(
-                            "Preview catalog · Video episodes will be available when licensed content is added.",
+                            if (drama.id.isBlank()) "Preview title · Streaming begins when licensed content is published." else "Licensed Ethiopian short-drama catalog.",
                             fontSize = 12.sp,
                             color = Color.LightGray
                         )
@@ -186,7 +253,7 @@ private fun AddisReelApp() {
                 when(tab) {
                     0 -> {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
-                            val videoUrl = selected.url
+                            val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
                                 Video(videoUrl, selected.title + "_episode_" + episode)
                             } else {
@@ -212,8 +279,8 @@ private fun AddisReelApp() {
                                 ) {
                                     Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
                                     Spacer(Modifier.height(12.dp))
-                                    Text("Ethiopian stories. Coming soon.", color=Color.LightGray)
-                                    Text("Licensed episodes will play here",fontSize=12.sp,color=Color.Gray)
+                                    Text(if (selected.id.isBlank()) "Ethiopian stories. Coming soon." else "Preparing episode stream", color=Color.LightGray)
+                                    Text(if (selected.id.isBlank()) "Licensed episodes will play here" else "Check your connection if playback does not start",fontSize=12.sp,color=Color.Gray)
                                     Spacer(Modifier.height(16.dp))
                                     Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
@@ -254,6 +321,7 @@ private fun AddisReelApp() {
                     }
                     1 -> {
                         Header("Discover")
+                        if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (discoverGenre == "All" || drama.genre == discoverGenre) &&
