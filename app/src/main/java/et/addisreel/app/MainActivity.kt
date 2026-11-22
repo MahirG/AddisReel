@@ -318,6 +318,39 @@ private fun AddisReelApp() {
                             IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x990C0C10), RoundedCornerShape(50))) {
                                 Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = Gold)
                             }
+                            // Cinema mode keeps episode navigation reachable without opening a sheet.
+                            if (cinemaMode) {
+                                Row(
+                                    modifier = Modifier.align(Alignment.BottomCenter)
+                                        .padding(horizontal = 18.dp, vertical = 18.dp)
+                                        .background(Color(0xCC101016), RoundedCornerShape(28.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    IconButton(
+                                        onClick = { selectEpisode(episode - 1) },
+                                        enabled = episode > 1
+                                    ) {
+                                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous episode", tint = if (episode > 1) Gold else Color.Gray)
+                                    }
+                                    Text(
+                                        "EP $episode / ${selected.episodes}",
+                                        color = Color.White,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    IconButton(
+                                        onClick = { selectEpisode(episode + 1) },
+                                        enabled = episode < selected.episodes
+                                    ) {
+                                        Icon(Icons.Default.SkipNext, contentDescription = "Next episode", tint = if (episode < selected.episodes) Gold else Color.Gray)
+                                    }
+                                    IconButton(onClick = { showEpisodes = true }) {
+                                        Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = Gold)
+                                    }
+                                }
+                            }
                             if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
                                     Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
