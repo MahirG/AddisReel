@@ -45,7 +45,9 @@ export function parseMovieFields(input) {
       if (key) {
         fields[key] = match[2].trim();
         continuation = key === "description" ? key : "";
-      } else if (!line) {
+      } else if (!line || match) {
+        // Unknown labels (for example Status or Distribution rights) must
+        // never be swallowed into a multiline description.
         continuation = "";
       } else if (continuation) {
         fields[continuation] += " " + line;
