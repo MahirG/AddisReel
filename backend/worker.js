@@ -3,6 +3,7 @@ import { clientScript } from "./client.js";
 import { manifest, serviceWorker } from "./pwa.js";
 import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
+import { newSalt, deriveProof } from "./password-client.js";
 import { parseMovieFields } from "./importer.js";
 
 const publicHeaders = { "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" };
@@ -83,6 +84,11 @@ export default {
       if (request.method === "GET" && path === "/health")
         return reply({status:"ok",service:"addisreel-catalog",phase:3});
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
+      if (request.method === "GET" && path === "/admin/password-client.js")
+        return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
+          headers:{"Content-Type":"application/javascript; charset=utf-8",
+            "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
+        });
       if (request.method === "GET" && path === "/admin/client.js")
         return new Response(clientScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
           "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
