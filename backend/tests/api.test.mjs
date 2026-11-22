@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { inflateSync } from "node:zlib";
 import worker from "../worker.js";
 
 const root = "https://addisreel-catalog.example.test";
@@ -98,5 +99,18 @@ test("Admin PWA assets are installable and never expose account data", async () 
     assert.deepEqual(Array.from(buf.slice(0,8)),[137,80,78,71,13,10,26,10]);
     const size=new DataView(buf.buffer).getUint32(16);
     assert.equal(size,px);
+    let offset=8,found=false;
+    while(offset+12<=buf.length){
+      const dv=new DataView(buf.buffer,buf.byteOffset+offset,4);
+      const length=dv.getUint32(0);
+      const type=String.fromCharCode(...buf.slice(offset+4,offset+8));
+      if(type==="IDAT"){
+        const raw=inflateSync(buf.slice(offset+8,offset+8+length));
+        assert.equal(raw.length,px*(1+Math.ceil(px/8)));
+        found=true;break;
+      }
+      offset+=12+length;
+    }
+    assert.equal(found,true,"PWA PNG must contain a valid IDAT stream");
   }
 });
