@@ -59,6 +59,7 @@ private fun AddisReelApp() {
     var showEpisodes by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
+    var discoverSort by remember { mutableStateOf("Featured") }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
@@ -202,12 +203,17 @@ private fun AddisReelApp() {
                     1 -> {
                         Header("Discover")
                         val genres = remember { listOf("All") + catalog.map { it.genre }.distinct() }
-                        val filtered = catalog.filter { drama ->
+                        val matches = catalog.filter { drama ->
                             (discoverGenre == "All" || drama.genre == discoverGenre) &&
                                 (discoverQuery.isBlank() ||
                                     drama.title.contains(discoverQuery.trim(), ignoreCase = true) ||
                                     drama.genre.contains(discoverQuery.trim(), ignoreCase = true) ||
                                     drama.description.contains(discoverQuery.trim(), ignoreCase = true))
+                        }
+                        val filtered = when (discoverSort) {
+                            "A–Z" -> matches.sortedBy { it.title }
+                            "Most episodes" -> matches.sortedByDescending { it.episodes }
+                            else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
                             OutlinedTextField(
@@ -237,10 +243,45 @@ private fun AddisReelApp() {
                                     )
                                 }
                             }
+                            Row(
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Sort, contentDescription = null, tint = Color.LightGray)
+                                listOf("Featured", "A–Z", "Most episodes").forEach { sort ->
+                                    FilterChip(
+                                        selected = discoverSort == sort,
+                                        onClick = { discoverSort = sort },
+                                        label = { Text(sort) }
+                                    )
+                                }
+                            }
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                if (discoverQuery.isBlank() && discoverGenre == "All") {
+                                    item {
+                                        Card(
+                                            onClick = { detailDrama = catalog.first() },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(20.dp),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF302536))
+                                        ) {
+                                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("ADDISREEL ORIGINAL STORIES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                Text("Discover your next story", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                                Text("Explore short Ethiopian drama previews. New episodes are coming soon.", color = Color.LightGray, fontSize = 13.sp)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Gold)
+                                                    Text("Explore featured series", color = Gold, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 item { Text("${filtered.size} dramas", color = Color.LightGray) }
                                 if (filtered.isEmpty()) {
                                     item {
