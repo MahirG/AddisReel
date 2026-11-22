@@ -1,6 +1,7 @@
 import { studioHtml } from "./studio.js";
 import { clientScript } from "./client.js";
 import { wizardScript } from "./wizard.js";
+import { handleMultipartUpload } from "./multipart.js";
 import { manifest, serviceWorker } from "./pwa.js";
 import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
@@ -173,6 +174,8 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        const multipartPath=/^\/v1\/admin\/uploads\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
+        if(multipartPath) return handleMultipartUpload(request,env,url,multipartPath[1],Number(multipartPath[2]));
         // Admin artwork and draft video previews are private even when the series is unpublished.
         const privatePoster = /^\/v1\/admin\/posters\/([a-z0-9-]+)$/.exec(path);
         if (request.method === "GET" && privatePoster) {
@@ -268,9 +271,11 @@ export default {
           const size=Number(request.headers.get("Content-Length") || request.headers.get("X-Upload-Size"));
           if (!Number.isSafeInteger(size) || size<1 || size>90*1024*1024)
             return fail("Choose an MP4 under 90 MB. Large-video processing is not configured yet.",413,false);
-          const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
+          const e=await env.DB.prepare("SELECT media_prefix,status,licensed FROM episodes WHERE series_id=? AND number=?")
             .bind(directMp4[1],Number(directMp4[2])).first();
           if (!e) return fail("Save your episode details before uploading video",404,false);
+          if(e.status==="published" && Number(e.licensed)===1)
+            return fail("Unpublish the episode before replacing its live video",409,false);
           const key=e.media_prefix+"/video.mp4";
           const object=await env.MEDIA.put(key,request.body,{httpMetadata:{contentType:"video/mp4"}});
           if(object.size>90*1024*1024) {await env.MEDIA.delete(key);return fail("Video exceeds the 90 MB upload limit",413,false);}
@@ -281,9 +286,11 @@ export default {
           let file;
           try { file=decodeURIComponent(upHls[3]); } catch { return fail("Invalid filename",400,false); }
           if (!fileOK(file)) return fail("Invalid HLS filename",400,false);
-          const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
+          const e=await env.DB.prepare("SELECT media_prefix,status,licensed FROM episodes WHERE series_id=? AND number=?")
             .bind(upHls[1],Number(upHls[2])).first();
           if (!e) return fail("Create episode before media upload",404,false);
+          if(e.status==="published" && Number(e.licensed)===1)
+            return fail("Unpublish the episode before replacing its live video",409,false);
           const bytes=await request.arrayBuffer();
           if (!bytes.byteLength || bytes.byteLength > 16*1024*1024) return fail("HLS file must be 1-16MB",413,false);
           await env.MEDIA.put(e.media_prefix+"/"+file,bytes,{httpMetadata:{contentType:extType(file)}});
