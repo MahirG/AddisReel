@@ -61,12 +61,16 @@ const options=(path,method="GET",body={},cookie=null,origin=base)=>{
 const token="P".repeat(48);
 const email="owner@example.com";
 const password="A unique long passphrase 2026!";
+const passwordProof="a".repeat(64);
+const passwordSalt="AbCdEfGhIjKlMnOpQrStUv";
+const setupPayload={setupToken:token,email,passwordProof,passwordSalt,passwordLength:password.length};
+const authPepper="server-side-test-pepper-which-is-not-a-production-secret";
 test("owner account setup exchanges token for an HttpOnly persistent session",async()=>{
-  const {DB,state}=fakeDB(),env={DB,ADMIN_TOKEN:token};
+  const {DB,state}=fakeDB(),env={DB,ADMIN_TOKEN:token,AUTH_PEPPER:authPepper};
   const initial=await handleAuth(options("/v1/auth/session"),env,new URL(base+"/v1/auth/session"));
   assert.deepEqual(await initial.json(),{authenticated:false,setupRequired:true});
 
-  const request=options("/v1/auth/setup","POST",{setupToken:token,email,password});
+  const request=options("/v1/auth/setup","POST",setupPayload);
   const result=await handleAuth(request,env,new URL(request.url));
   assert.equal(result.status,201);
   const cookie=result.headers.get("set-cookie");
@@ -75,6 +79,8 @@ test("owner account setup exchanges token for an HttpOnly persistent session",as
   assert.match(cookie,/Max-Age=7776000/);
   assert.equal(state.account.email,email);
   assert.notEqual(state.account.password_hash,password);
+  assert.notEqual(state.account.password_hash,passwordProof);
+  assert.notEqual(state.account.password_hash,token);
   assert.ok(!JSON.stringify(state).includes(token));
   const cookieValue=cookie.split(";")[0];
 
@@ -96,7 +102,7 @@ test("owner account setup exchanges token for an HttpOnly persistent session",as
   const after=await handleAuth(reload,env,new URL(reload.url));
   assert.deepEqual(await after.json(),{authenticated:false,setupRequired:false});
 
-  const signIn=options("/v1/auth/login","POST",{email,password});
+  const signIn=options("/v1/auth/login","POST",{email,passwordProof});
   const login=await handleAuth(signIn,env,new URL(signIn.url));
   assert.equal(login.status,200);
   assert.match(login.headers.get("set-cookie"),/HttpOnly/);
@@ -104,10 +110,10 @@ test("owner account setup exchanges token for an HttpOnly persistent session",as
 });
 
 test("setup token cannot create another admin and cannot bypass logged-in session",async()=>{
- const {DB}=fakeDB(),env={DB,ADMIN_TOKEN:token};
+ const {DB}=fakeDB(),env={DB,ADMIN_TOKEN:token,AUTH_PEPPER:authPepper};
  const initial=options("/v1/auth/setup","POST",{setupToken:token,email,password});
  assert.equal((await handleAuth(initial,env,new URL(initial.url))).status,201);
- const second=options("/v1/auth/setup","POST",{setupToken:token,email:"other@example.com",password});
+ const second=options("/v1/auth/setup","POST",{...setupPayload,email:"other@example.com"});
  assert.equal((await handleAuth(second,env,new URL(second.url))).status,409);
  const noCookie=new Request(base+"/v1/admin/series",{headers:{Authorization:"Bearer "+token}});
  const denied=await requireAdmin(noCookie,env,new URL(noCookie.url));
@@ -115,10 +121,10 @@ test("setup token cannot create another admin and cannot bypass logged-in sessio
 });
 
 test("password and setup flows enforce valid origin and strong passwords",async()=>{
- const {DB}=fakeDB(),env={DB,ADMIN_TOKEN:token};
+ const {DB}=fakeDB(),env={DB,ADMIN_TOKEN:token,AUTH_PEPPER:authPepper};
  const wrongOrigin=options("/v1/auth/setup","POST",{setupToken:token,email,password},null,"https://attacker.example");
  assert.equal((await handleAuth(wrongOrigin,env,new URL(wrongOrigin.url))).status,403);
- const weak=options("/v1/auth/setup","POST",{setupToken:token,email,password:"123"});
+ const weak=options("/v1/auth/setup","POST",{...setupPayload,passwordLength:3});
  const response=await handleAuth(weak,env,new URL(weak.url));
  assert.equal(response.status,400);
  assert.match((await response.json()).error,/12/);
