@@ -34,7 +34,30 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Compile debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace --console=plain
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --no-daemon --console=plain 2>&1 | tee android-build.log
+      - name: Summarize build failure
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "## AddisReel Android build failure"
+            echo ""
+            echo "### First actionable errors"
+            echo '\`\`\`text'
+            grep -n -m 20 -E '(^e: |^FAILURE:|^\* What went wrong:|^> |^Caused by:|^.* error:|Could not resolve|Could not find|Unresolved reference|Compilation error)' android-build.log || tail -n 70 android-build.log
+            echo '\`\`\`'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload complete build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AddisReel-gradle-build-log
+          path: android-build.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Upload installable debug APK
         if: success()
         uses: actions/upload-artifact@v4
