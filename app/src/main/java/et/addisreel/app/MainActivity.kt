@@ -57,7 +57,7 @@ private fun AddisReelApp() {
                 when(tab) {
                     0 -> {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
-                            if(selected.url != null) Video(selected.url)
+                            selected.url?.let { videoUrl -> Video(videoUrl) }
                             else Column(Modifier.align(Alignment.Center),horizontalAlignment=Alignment.CenterHorizontally) {
                                 Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
                                 Spacer(Modifier.height(12.dp))
