@@ -536,6 +536,12 @@ private fun AddisReelApp() {
                                                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                                                 Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                                 Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
+                                                                LinearProgressIndicator(
+                                                                    progress = { (resume - 1).toFloat() / drama.episodes.coerceAtLeast(1) },
+                                                                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                                                                    color = Gold,
+                                                                    trackColor = Color(0xFF34343B)
+                                                                )
                                                                 Text("Resume watching", fontSize = 11.sp, color = Color.LightGray)
                                                             }
                                                         }
@@ -576,7 +582,12 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                items(filtered) { drama -> DramaRow(drama) { detailDrama = drama } }
+                                items(filtered) { drama ->
+                                    DramaRow(
+                                        drama,
+                                        resumeEpisode = if (drama.title in viewingHistory) preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes) else null
+                                    ) { detailDrama = drama }
+                                }
                             }
                         }
                     }
@@ -621,7 +632,7 @@ private fun AddisReelApp() {
                                 item { Text("${saved.size} saved series", color = Color.LightGray) }
                                 items(catalog.filter { it.title in saved }) { drama ->
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        DramaRow(drama) { selectDrama(drama); tab = 0 }
+                                        DramaRow(drama, resumeEpisode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)) { selectDrama(drama); tab = 0 }
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -657,7 +668,7 @@ private fun AddisReelApp() {
     }
 }
 @Composable private fun Header(title:String) { Text(title,Modifier.padding(20.dp),fontSize=28.sp,fontWeight=FontWeight.Bold,color=Color.White) }
-@Composable private fun DramaRow(drama: Drama, onClick: () -> Unit) {
+@Composable private fun DramaRow(drama: Drama, resumeEpisode: Int? = null, onClick: () -> Unit) {
     val posterColors = when (drama.genre) {
         "Romance" -> listOf(Color(0xFF70334E), Color(0xFF24121F))
         "Mystery" -> listOf(Color(0xFF244B5B), Color(0xFF101C29))
@@ -694,6 +705,15 @@ private fun AddisReelApp() {
                 Text(drama.title, fontWeight = FontWeight.Bold, fontSize = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(drama.genre.uppercase(), color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Text("${drama.episodes} short episodes", fontSize = 12.sp, color = Color.LightGray)
+                if (resumeEpisode != null) {
+                    Text("Continue · Episode $resumeEpisode of ${drama.episodes}", fontSize = 11.sp, color = Gold)
+                    LinearProgressIndicator(
+                        progress = { (resumeEpisode - 1).toFloat() / drama.episodes.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = Gold,
+                        trackColor = Color(0xFF34343B)
+                    )
+                }
                 Text(drama.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color.LightGray)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
