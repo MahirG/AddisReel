@@ -60,3 +60,15 @@ Check the master playlist and segments before marking the episode published. Sou
 ## Release
 
 Phase 3 must ship all together as Android 0.1.6, versionCode 7. Do not merge or publish until the complete Android and backend test suite passes and the admin secret and live API are verified. Publish via the existing in-app release workflow after successful verification.
+
+## Studio 3.1 — mobile-friendly larger MP4 uploads without Stream
+
+The Content Studio can upload normal MP4 episodes directly to the existing R2 bucket. Files over 16 MiB are uploaded in 8 MiB multipart chunks (currently up to **1 GiB** per episode), with local progress persistence. If the mobile connection drops, the owner can reselect the exact same video (unchanged filename, size and last-modified timestamp) and resume unfinished chunks. This requires no Cloudflare Stream subscription, but **does not transcode/compress videos or create adaptive bitrate renditions**. Existing HLS media remains supported. R2 usage may incur storage/operation charges when plan allowances are exceeded.
+
+Authenticated endpoints (normal admin cookie and origin checks apply):
+- `POST /v1/admin/uploads/:series/:episode?action=start` — body `{name, size}`, returns `{uploadId, partSize, totalParts}`.
+- `PUT /v1/admin/uploads/:series/:episode?action=part&uploadId=...&partNumber=...` — one binary chunk, returns `{partNumber, etag}`.
+- `POST /v1/admin/uploads/:series/:episode?action=finish&uploadId=...` — body `{size, parts}`, atomically assembles and checks the upload.
+- `DELETE /v1/admin/uploads/:series/:episode?action=abort&uploadId=...` — aborts an incomplete session.
+
+Large-video uploads cannot replace an already published and rights-verified episode. Unpublish it first. Unfinished R2 multipart uploads expire automatically after the provider's retention period. Only rights-cleared, playable titles appear in the public Android catalog.
