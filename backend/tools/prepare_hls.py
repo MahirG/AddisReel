@@ -51,7 +51,7 @@ def main():
                 "-map", "0:v:0"]
         if has_audio:
             args += ["-map", "0:a:0"]
-        args += ["-vf", f"scale=if(gte(iw,ih),-2,{target}):if(gte(iw,ih),{target},-2)",
+        args += ["-vf", f"scale={target}:-2" if width <= height else f"scale=-2:{target}",
                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
                  "-pix_fmt", "yuv420p", "-g", "48", "-keyint_min", "48",
                  "-sc_threshold", "0"]
