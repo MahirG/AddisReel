@@ -114,3 +114,12 @@ test("Admin PWA assets are installable and never expose account data", async () 
     assert.equal(found,true,"PWA PNG must contain a valid IDAT stream");
   }
 });
+
+test("Studio serves dedicated browser-side password stretching script without caching credentials",async()=>{
+ const response=await worker.fetch(request("/admin/password-client.js"),{DB:emptyDB});
+ assert.equal(response.status,200);
+ assert.match(response.headers.get("content-type"),/javascript/);
+ assert.match(await response.text(),/PBKDF2/);
+ const html=await (await worker.fetch(request("/admin"),{DB:emptyDB})).text();
+ assert.match(html,/admin\/password-client\.js/);
+});
