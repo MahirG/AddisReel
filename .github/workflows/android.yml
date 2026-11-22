@@ -118,6 +118,18 @@ jobs:
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "Signed release skipped: configure four ADDISREEL signing secrets." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Install Android SDK 35 for release build
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
       - name: Build signed production APK
         if: steps.signing.outputs.ready == 'true'
         shell: bash
