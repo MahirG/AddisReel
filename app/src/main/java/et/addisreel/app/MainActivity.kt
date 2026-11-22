@@ -1,6 +1,9 @@
 package et.addisreel.app
 
 import android.os.Bundle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -192,9 +195,17 @@ private fun AddisReelApp() {
 }
 @Composable private fun Video(url:String) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
+    val positionKey = remember(url) {
+        val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
+        "position_" + bytes.joinToString("") { "%02x".format(it) }
+    }
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(url))
+            val savedPosition = preferences.getLong(positionKey, 0L)
+            if (savedPosition > 0L) seekTo(savedPosition)
             repeatMode = ExoPlayer.REPEAT_MODE_ONE
             playWhenReady = true
             prepare()
@@ -212,8 +223,21 @@ private fun AddisReelApp() {
                 playbackError = true
             }
         }
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                if (player.currentPosition > 0L) {
+                    preferences.edit().putLong(positionKey, player.currentPosition).apply()
+                }
+                player.pause()
+            }
+        }
         player.addListener(listener)
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
         onDispose {
+            if (player.currentPosition > 0L) {
+                preferences.edit().putLong(positionKey, player.currentPosition).apply()
+            }
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
             player.removeListener(listener)
             player.release()
         }
