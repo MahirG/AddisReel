@@ -1,0 +1,1 @@
+# Release shrinker rules; add keep rules only when required.
