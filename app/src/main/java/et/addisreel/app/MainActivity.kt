@@ -57,12 +57,16 @@ private fun AddisReelApp() {
                 when(tab) {
                     0 -> {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
-                            selected.url?.let { videoUrl -> Video(videoUrl) }
-                            else Column(Modifier.align(Alignment.Center),horizontalAlignment=Alignment.CenterHorizontally) {
+                            val videoUrl = selected.url
+                            if (videoUrl != null) {
+                                Video(videoUrl)
+                            } else {
+                                Column(Modifier.align(Alignment.Center),horizontalAlignment=Alignment.CenterHorizontally) {
                                 Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
                                 Spacer(Modifier.height(12.dp))
                                 Text("Ethiopian stories. Coming soon.", color=Color.LightGray)
                                 Text("Licensed episodes will play here",fontSize=12.sp,color=Color.Gray)
+                                }
                             }
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
                                 Text("ADDISREEL  •  EPISODE $episode", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
