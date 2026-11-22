@@ -88,3 +88,56 @@ jobs:
             app/build/outputs/logs/**
           if-no-files-found: ignore
           retention-days: 7
+
+  signed-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    env:
+      ADDISREEL_KEYSTORE_B64: ${{ secrets.ADDISREEL_KEYSTORE_B64 }}
+      ADDISREEL_KEYSTORE_PASSWORD: ${{ secrets.ADDISREEL_KEYSTORE_PASSWORD }}
+      ADDISREEL_KEY_ALIAS: ${{ secrets.ADDISREEL_KEY_ALIAS }}
+      ADDISREEL_KEY_PASSWORD: ${{ secrets.ADDISREEL_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Check signing configuration
+        id: signing
+        shell: bash
+        run: |
+          if [[ -n "$ADDISREEL_KEYSTORE_B64" && -n "$ADDISREEL_KEYSTORE_PASSWORD" && -n "$ADDISREEL_KEY_ALIAS" && -n "$ADDISREEL_KEY_PASSWORD" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Signed release skipped: configure four ADDISREEL signing secrets." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Build signed production APK
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ADDISREEL_KEYSTORE_PATH="$RUNNER_TEMP/addisreel-release.jks"
+          printf '%s' "$ADDISREEL_KEYSTORE_B64" | base64 --decode > "$ADDISREEL_KEYSTORE_PATH"
+          chmod 600 "$ADDISREEL_KEYSTORE_PATH"
+          gradle :app:assembleRelease --no-daemon --console=plain
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          sha256sum "$APK" >> "$GITHUB_STEP_SUMMARY"
+          rm -f "$ADDISREEL_KEYSTORE_PATH"
+      - name: Upload signed release APK
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AddisReel-signed-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
