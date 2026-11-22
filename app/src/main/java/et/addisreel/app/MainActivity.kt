@@ -117,7 +117,10 @@ private fun fetchPublishedCatalog(): List<Drama> {
 }
 private fun fetchEpisodeStream(id: String, episode: Int): String? {
     val url = catalogResponse("/v1/play/" + id + "/" + episode).optString("playbackUrl")
-    return url.takeIf { it.startsWith(CATALOG_API + "/v1/media/") && it.endsWith(".m3u8") }
+    return url.takeIf {
+        it.startsWith(CATALOG_API + "/v1/media/") &&
+            (it.endsWith(".m3u8") || it.endsWith(".mp4"))
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -505,7 +508,7 @@ private fun AddisReelApp() {
                     1 -> {
                         Header("Discover")
                         if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
-                        val genres = remember { listOf("All") + catalog.map { it.genre }.distinct() }
+                        val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (discoverGenre == "All" || drama.genre == discoverGenre) &&
                                 (discoverQuery.isBlank() ||
@@ -519,6 +522,22 @@ private fun AddisReelApp() {
                             else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
+                            if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
+                                ElevatedCard(
+                                    onClick = { selectDrama(featured); tab = 0 },
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
+                                ) {
+                                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("FEATURED ON ADDISREEL", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
+                                        Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text("▶  Start watching", color = Gold, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
                             OutlinedTextField(
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
