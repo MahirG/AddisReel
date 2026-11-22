@@ -1,5 +1,6 @@
 import { studioHtml } from "./studio.js";
 import { clientScript } from "./client.js";
+import { wizardScript } from "./wizard.js";
 import { manifest, serviceWorker } from "./pwa.js";
 import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
@@ -91,6 +92,9 @@ export default {
         });
       if (request.method === "GET" && path === "/admin/client.js")
         return new Response(clientScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
+          "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/wizard.js")
+        return new Response(wizardScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
           "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
       if (request.method === "GET" && path === "/admin/manifest.webmanifest")
         return new Response(manifest,{headers:{"Content-Type":"application/manifest+json; charset=utf-8",
