@@ -24,7 +24,7 @@ fun InAppUpdatePanel() {
     val currentCode = remember {
         if (Build.VERSION.SDK_INT >= 28)
             context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toInt()
-        else @Suppress("DEPRECATION") context.packageManager.getPackageInfo(context.packageName, 0).versionCode
+        else context.packageManager.getPackageInfo(context.packageName, 0).versionCode
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("App updates", style = MaterialTheme.typography.titleLarge)
