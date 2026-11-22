@@ -72,3 +72,13 @@ Authenticated endpoints (normal admin cookie and origin checks apply):
 - `DELETE /v1/admin/uploads/:series/:episode?action=abort&uploadId=...` — aborts an incomplete session.
 
 Large-video uploads cannot replace an already published and rights-verified episode. Unpublish it first. Unfinished R2 multipart uploads expire automatically after the provider's retention period. Only rights-cleared, playable titles appear in the public Android catalog.
+
+## Studio 3.3 — minimize-friendly, resumable uploads
+
+- An in-progress upload **does not intentionally pause** when the Studio PWA is minimized or you use another app. A floating progress dock remains visible when Studio is reopened or you navigate between its pages. Use **Pause / Resume** to control a running transfer.
+- All MP4 episodes, including those under 16 MiB, use R2 multipart with 8 MiB chunks. The browser stores only session metadata and upload receipts in `localStorage`; it does **not** cache the full private video locally.
+- Network interruptions retry automatically while the Studio page remains alive. Previously uploaded parts and the selected multi-episode batch are checkpointed; successful earlier episodes in the batch are not uploaded twice.
+- If Android suspends or force-stops the browser, continuous background transfer **cannot be guaranteed by this web PWA**. Reopen Studio, reselect the same file(s), and select **Resume saved upload**; the completed chunks are reused. Force closing may interrupt active network requests. A true guaranteed Android foreground upload would require a native foreground service and OS notification, which is not part of this admin PWA.
+- Cloud-side FFmpeg processing (once the user's Windows PC processor is running) is separate and continues independently after the upload finishes; the source MP4 stays preserved.
+
+This release makes no changes to Cloudflare Stream billing, the Android viewer APK, licensing checks, or the original media storage keys.
