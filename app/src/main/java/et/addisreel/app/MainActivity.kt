@@ -48,7 +48,15 @@ private fun AddisReelApp() {
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf(catalog.first()) }
-    var episode by remember { mutableIntStateOf(1) }
+    var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
+    fun selectDrama(drama: Drama) {
+        selected = drama
+        episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
+    }
+    fun selectEpisode(next: Int) {
+        episode = next.coerceIn(1, selected.episodes)
+        preferences.edit().putInt("episode_" + selected.title, episode).apply()
+    }
     var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
     fun toggleSaved(title: String) {
         val updated = if (title in saved) saved - title else saved + title
@@ -79,25 +87,26 @@ private fun AddisReelApp() {
                                 }
                             }
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-                                Text("ADDISREEL  •  EPISODE $episode", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
+                                Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
                                 Text(selected.description,maxLines=2,overflow=TextOverflow.Ellipsis,color=Color.LightGray)
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                                    Button(onClick={episode=if(episode<selected.episodes) episode+1 else 1}) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
+                                    OutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
+                                    Button(onClick={selectEpisode(episode+1)},enabled=episode<selected.episodes) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
                                     OutlinedButton(onClick={toggleSaved(selected.title)}) { Icon(if(selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,null) }
                                 }
                             }
                         }
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            catalog.forEach { drama -> FilterChip(selected=selected==drama,onClick={selected=drama;episode=1},label={Text(drama.title)}) }
+                            catalog.forEach { drama -> FilterChip(selected=selected==drama,onClick={selectDrama(drama)},label={Text(drama.title)}) }
                         }
                     }
                     1 -> {
                         Header("Discover")
                         LazyColumn(contentPadding=PaddingValues(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                             item { Text("Ethiopian short dramas",fontSize=20.sp,fontWeight=FontWeight.Bold) }
-                            items(catalog) { drama -> DramaRow(drama) { selected=drama;episode=1;tab=0 } }
+                            items(catalog) { drama -> DramaRow(drama) { selectDrama(drama);tab=0 } }
                         }
                     }
                     2 -> {
