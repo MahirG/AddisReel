@@ -122,6 +122,10 @@ private fun AddisReelApp() {
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
     var cinemaMode by remember { mutableStateOf(false) }
+    // Default to the original frame so subtitles and credits are never cropped.
+    var fillVideo by remember {
+        mutableStateOf(preferences.getBoolean("cinema_fill_video", false))
+    }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -283,7 +287,7 @@ private fun AddisReelApp() {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -348,6 +352,16 @@ private fun AddisReelApp() {
                                     }
                                     IconButton(onClick = { showEpisodes = true }) {
                                         Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = Gold)
+                                    }
+                                    IconButton(onClick = {
+                                        fillVideo = !fillVideo
+                                        preferences.edit().putBoolean("cinema_fill_video", fillVideo).apply()
+                                    }) {
+                                        Icon(
+                                            if (fillVideo) Icons.Default.FitScreen else Icons.Default.CropFree,
+                                            contentDescription = if (fillVideo) "Fit entire video" else "Fill screen",
+                                            tint = Gold
+                                        )
                                     }
                                 }
                             }
@@ -605,7 +619,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -810,7 +824,7 @@ private fun AddisReelApp() {
                     useController = true
                     controllerShowTimeoutMs = 2500
                     controllerHideOnTouch = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
                     keepScreenOn = true
                 }
             },
@@ -819,6 +833,7 @@ private fun AddisReelApp() {
             // released player from the previous episode.
             update = { view ->
                 if (view.player !== player) view.player = player
+                view.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             },
             modifier = Modifier.fillMaxSize()
         )
