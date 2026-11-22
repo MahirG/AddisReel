@@ -48,8 +48,27 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.ui.PlayerView
 
+// One bounded on-device cache shared by players; never create a SimpleCache per episode.
+private object StreamCache {
+    @Volatile private var instance: SimpleCache? = null
+    fun get(context: Context): SimpleCache =
+        instance ?: synchronized(this) {
+            instance ?: SimpleCache(
+                java.io.File(context.applicationContext.cacheDir, "stream_segments"),
+                LeastRecentlyUsedCacheEvictor(80L * 1024L * 1024L),
+                StandaloneDatabaseProvider(context.applicationContext)
+            ).also { instance = it }
+        }
+}
 private val Gold = Color(0xFFFFC857)
 private val Dark = Color(0xFF0C0C10)
 private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null, val id:String = "", val posterUrl:String? = null)
@@ -118,9 +137,13 @@ private fun AddisReelApp() {
     var episodeUrl by remember { mutableStateOf<String?>(null) }
     // Prefetch only the next playback URL (not the video bytes) to avoid extra mobile data.
     var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
+    // Signed playback URLs may expire. Never reuse a prefetched URL indefinitely.
+    var prefetchedAtMs by remember { mutableLongStateOf(0L) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
+    // Viewers can move between short episodes with a deliberate vertical swipe.
+    // Keep the gesture on the player container so it works with real video too.
     var cinemaMode by remember { mutableStateOf(false) }
     // Default to the original frame so subtitles and credits are never cropped.
     var fillVideo by remember {
@@ -131,10 +154,22 @@ private fun AddisReelApp() {
     var discoverSort by remember { mutableStateOf("Featured") }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
+    // Keep a small, ordered local viewing history without requiring an account.
+    var viewingHistory by remember {
+        mutableStateOf(
+            (preferences.getString("viewing_history", "") ?: "")
+                .split("|").filter { it.isNotBlank() }.distinct().take(12)
+        )
+    }
+    fun recordViewing(title: String) {
+        viewingHistory = (listOf(title) + viewingHistory.filterNot { it == title }).take(12)
+        preferences.edit().putString("viewing_history", viewingHistory.joinToString("|")).apply()
+    }
     var selected by remember { mutableStateOf(catalog.find { it.title == recentlyWatched } ?: catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)) }
     fun selectDrama(drama: Drama) {
         recentlyWatched = drama.title
+        recordViewing(drama.title)
         preferences.edit().putString("recently_watched", drama.title).apply()
         selected = drama
         showEpisodes = false
@@ -144,6 +179,7 @@ private fun AddisReelApp() {
     }
     fun selectEpisode(next: Int) {
         recentlyWatched = selected.title
+        recordViewing(selected.title)
         preferences.edit().putString("recently_watched", selected.title).apply()
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
@@ -167,7 +203,10 @@ private fun AddisReelApp() {
         val currentEpisode = episode
         if (seriesId.isNotBlank()) {
             val warm = prefetchedEpisode
-            episodeUrl = if (streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode) {
+            episodeUrl = if (
+                streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode &&
+                android.os.SystemClock.elapsedRealtime() - prefetchedAtMs in 0L..60_000L
+            ) {
                 prefetchedEpisode = null
                 warm.third
             } else {
@@ -183,6 +222,7 @@ private fun AddisReelApp() {
                     withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
                 }.getOrNull()
                 prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
+                prefetchedAtMs = if (nextUrl != null) android.os.SystemClock.elapsedRealtime() else 0L
             }
         }
     }
@@ -242,6 +282,20 @@ private fun AddisReelApp() {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
+                    val lastReached = preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Your progress · Episode $lastReached", color = Color.LightGray, fontSize = 12.sp)
+                        Spacer(Modifier.weight(1f))
+                        Text("${((lastReached - 1) * 100 / selected.episodes.coerceAtLeast(1))}%", color = Gold, fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { (lastReached - 1).toFloat() / selected.episodes.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = Gold,
+                        trackColor = Color(0xFF34343B)
+                    )
                     Spacer(Modifier.height(14.dp))
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp),
@@ -250,6 +304,7 @@ private fun AddisReelApp() {
                     ) {
                         items((1..selected.episodes).toList()) { number ->
                             val active = number == episode
+                            val watched = number < lastReached
                             Surface(
                                 onClick = { selectEpisode(number); showEpisodes = false },
                                 shape = RoundedCornerShape(14.dp),
@@ -261,14 +316,23 @@ private fun AddisReelApp() {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        if (active) Icons.Default.PlayCircle else Icons.Default.Movie,
+                                        if (active) Icons.Default.PlayCircle else if (watched) Icons.Default.CheckCircle else Icons.Default.Movie,
                                         contentDescription = null,
-                                        tint = if (active) Gold else Color.LightGray
+                                        tint = if (active || watched) Gold else Color.LightGray
                                     )
                                     Spacer(Modifier.width(14.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text("Episode $number", fontWeight = FontWeight.SemiBold)
-                                        if (active) Text("Current episode", fontSize = 11.sp, color = Gold)
+                                        Text(
+                                            when {
+                                                active -> "Now playing"
+                                                watched -> "Previously reached"
+                                                number == lastReached -> "Continue here"
+                                                else -> "Tap to watch"
+                                            },
+                                            fontSize = 11.sp,
+                                            color = if (active || watched || number == lastReached) Gold else Color.LightGray
+                                        )
                                     }
 
                                 }
@@ -288,7 +352,29 @@ private fun AddisReelApp() {
             Column(Modifier.fillMaxSize().padding(padding)) {
                 when(tab) {
                     0 -> {
-                        Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
+                        Box(
+                            Modifier.weight(1f).fillMaxWidth()
+                                .background(Color(0xFF101016))
+                                .pointerInput(selected.id, selected.title, episode, selected.episodes) {
+                                    var dragDistance = 0f
+                                    detectVerticalDragGestures(
+                                        onDragStart = { dragDistance = 0f },
+                                        onVerticalDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragDistance += dragAmount
+                                        },
+                                        onDragEnd = {
+                                            if (dragDistance < -110f && episode < selected.episodes) {
+                                                selectEpisode(episode + 1)
+                                            } else if (dragDistance > 110f && episode > 1) {
+                                                selectEpisode(episode - 1)
+                                            }
+                                            dragDistance = 0f
+                                        },
+                                        onDragCancel = { dragDistance = 0f }
+                                    )
+                                }
+                        ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
                                 Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
@@ -297,22 +383,7 @@ private fun AddisReelApp() {
                             } else {
                                 Column(
                                     Modifier.align(Alignment.Center).fillMaxWidth()
-                                        .pointerInput(selected.title, episode) {
-                                            var dragDistance = 0f
-                                            detectVerticalDragGestures(
-                                                onDragStart = { dragDistance = 0f },
-                                                onVerticalDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    dragDistance += dragAmount
-                                                },
-                                                onDragEnd = {
-                                                    if (dragDistance < -90f && episode < selected.episodes) selectEpisode(episode + 1)
-                                                    if (dragDistance > 90f && episode > 1) selectEpisode(episode - 1)
-                                                    dragDistance = 0f
-                                                },
-                                                onDragCancel = { dragDistance = 0f }
-                                            )
-                                        }.padding(vertical = 32.dp),
+                                        .padding(vertical = 32.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=Gold)
@@ -494,6 +565,40 @@ private fun AddisReelApp() {
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                if (discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Continue Watching", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                            Row(
+                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
+                                                    .forEach { drama ->
+                                                        val resume = preferences.getInt("episode_" + drama.title, 1)
+                                                            .coerceIn(1, drama.episodes)
+                                                        ElevatedCard(
+                                                            onClick = { selectDrama(drama); tab = 0 },
+                                                            colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF302536)),
+                                                            modifier = Modifier.width(180.dp)
+                                                        ) {
+                                                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
+                                                                LinearProgressIndicator(
+                                                                    progress = { (resume - 1).toFloat() / drama.episodes.coerceAtLeast(1) },
+                                                                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                                                                    color = Gold,
+                                                                    trackColor = Color(0xFF34343B)
+                                                                )
+                                                                Text("Resume watching", fontSize = 11.sp, color = Color.LightGray)
+                                                            }
+                                                        }
+                                                    }
+                                            }
+                                        }
+                                    }
+                                }
                                 if (discoverQuery.isBlank() && discoverGenre == "All") {
                                     item {
                                         Card(
@@ -526,7 +631,12 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                items(filtered) { drama -> DramaRow(drama) { detailDrama = drama } }
+                                items(filtered) { drama ->
+                                    DramaRow(
+                                        drama,
+                                        resumeEpisode = if (drama.title in viewingHistory) preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes) else null
+                                    ) { detailDrama = drama }
+                                }
                             }
                         }
                     }
@@ -571,7 +681,7 @@ private fun AddisReelApp() {
                                 item { Text("${saved.size} saved series", color = Color.LightGray) }
                                 items(catalog.filter { it.title in saved }) { drama ->
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        DramaRow(drama) { selectDrama(drama); tab = 0 }
+                                        DramaRow(drama, resumeEpisode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)) { selectDrama(drama); tab = 0 }
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -607,7 +717,7 @@ private fun AddisReelApp() {
     }
 }
 @Composable private fun Header(title:String) { Text(title,Modifier.padding(20.dp),fontSize=28.sp,fontWeight=FontWeight.Bold,color=Color.White) }
-@Composable private fun DramaRow(drama: Drama, onClick: () -> Unit) {
+@Composable private fun DramaRow(drama: Drama, resumeEpisode: Int? = null, onClick: () -> Unit) {
     val posterColors = when (drama.genre) {
         "Romance" -> listOf(Color(0xFF70334E), Color(0xFF24121F))
         "Mystery" -> listOf(Color(0xFF244B5B), Color(0xFF101C29))
@@ -626,24 +736,70 @@ private fun AddisReelApp() {
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Box(
-                Modifier.size(width = 104.dp, height = 144.dp)
-                    .background(Brush.verticalGradient(posterColors), RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center
+                Modifier.size(width = 112.dp, height = 160.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Brush.verticalGradient(posterColors))
             ) {
                 if (drama.posterUrl != null) {
-                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title,
-                        contentScale = ContentScale.Crop, modifier = Modifier.matchParentSize())
-                } else Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
-                    Spacer(Modifier.height(8.dp))
-                    Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
-                    Text("Poster coming soon", fontSize = 8.sp, color = Color.LightGray)
+                    AsyncImage(
+                        model = drama.posterUrl,
+                        contentDescription = "Poster for " + drama.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.matchParentSize()
+                    )
+                } else {
+                    Column(
+                        Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
+                        Spacer(Modifier.height(8.dp))
+                        Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
+                        Text("Poster coming soon", fontSize = 8.sp, color = Color.LightGray)
+                    }
+                }
+                Box(
+                    Modifier.fillMaxWidth().height(54.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xDD09090E))))
+                )
+                Text(
+                    if (resumeEpisode != null) "CONTINUE · EP $resumeEpisode" else "${drama.episodes} EPISODES",
+                    modifier = Modifier.align(Alignment.BottomStart).padding(start = 9.dp, bottom = 9.dp),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                if (drama.id.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopStart).padding(7.dp),
+                        color = Color(0xD9211C12),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            "STREAM",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            color = Gold,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                 Text(drama.title, fontWeight = FontWeight.Bold, fontSize = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(drama.genre.uppercase(), color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Text("${drama.episodes} short episodes", fontSize = 12.sp, color = Color.LightGray)
+                if (resumeEpisode != null) {
+                    Text("Continue · Episode $resumeEpisode of ${drama.episodes}", fontSize = 11.sp, color = Gold)
+                    LinearProgressIndicator(
+                        progress = { (resumeEpisode - 1).toFloat() / drama.episodes.coerceAtLeast(1) },
+                        modifier = Modifier.fillMaxWidth().height(3.dp),
+                        color = Gold,
+                        trackColor = Color(0xFF34343B)
+                    )
+                }
                 Text(drama.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = Color.LightGray)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
@@ -669,29 +825,52 @@ private fun AddisReelApp() {
             ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
     }
     var isOnline by remember(url, episodeKey) { mutableStateOf(hasInternet()) }
+    var isMetered by remember(url, episodeKey) { mutableStateOf(connectivity.isActiveNetworkMetered) }
     DisposableEffect(connectivity, url, episodeKey) {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                isOnline = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                // Query the active network rather than a stale network that may
+                // still deliver callbacks during Wi-Fi/mobile handover.
+                isOnline = hasInternet()
+                isMetered = connectivity.isActiveNetworkMetered
             }
             override fun onLost(network: Network) {
                 isOnline = hasInternet()
+                isMetered = connectivity.isActiveNetworkMetered
             }
         }
         connectivity.registerDefaultNetworkCallback(callback)
         onDispose { connectivity.unregisterNetworkCallback(callback) }
     }
     val player = remember(url, episodeKey) {
+        // Prefer adaptive bitrate on weak or metered networks. The HLS master
+        // playlist must offer multiple renditions for quality switching to work.
+        val metered = connectivity.isActiveNetworkMetered
+        val trackSelector = DefaultTrackSelector(context).apply {
+            if (metered) {
+                setParameters(buildUponParameters().setMaxVideoBitrate(1_500_000))
+            }
+        }
         // Keep enough video buffered for variable mobile networks without excessive data use.
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                15_000, // minimum playback buffer
-                50_000, // maximum playback buffer
-                1_500,  // start playback promptly
-                3_000   // resume after rebuffering
+                if (metered) 8_000 else 15_000,  // lower memory/data buffering on metered links
+                if (metered) 25_000 else 50_000,
+                1_000, // start playback promptly
+                2_500  // resume after rebuffering
             )
             .build()
-        ExoPlayer.Builder(context).setLoadControl(loadControl).build().apply {
+        // Cache only media bytes actually requested by the viewer.
+        // LRU eviction caps storage at 80 MiB; no whole-episode predownloads.
+        val cacheFactory = CacheDataSource.Factory()
+            .setCache(StreamCache.get(context))
+            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(cacheFactory))
+            .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
+            .build().apply {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
             if (savedPosition > 0L) seekTo(savedPosition)
@@ -699,6 +878,16 @@ private fun AddisReelApp() {
             playWhenReady = true
             prepare()
         }
+    }
+    // React to Wi-Fi/mobile handover without replacing the player or losing
+    // the current position. Unmetered connections regain unrestricted ABR.
+    LaunchedEffect(player, isMetered) {
+        val selector = player.trackSelector as? DefaultTrackSelector
+        selector?.setParameters(
+            selector.buildUponParameters().setMaxVideoBitrate(
+                if (isMetered) 1_500_000 else Int.MAX_VALUE
+            )
+        )
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     // Avoid flashing a loading spinner for brief, normal buffer transitions.
@@ -747,9 +936,9 @@ private fun AddisReelApp() {
     // ExoPlayer can remain in BUFFERING without emitting an error on weak
     // connections. Detect a prolonged stall and use the same bounded retry path.
     LaunchedEffect(buffering, isOnline, inForeground, playbackError, player) {
-        if (buffering && isOnline && inForeground && !playbackError) {
-            delay(12_000L)
-            if (player.playbackState == Player.STATE_BUFFERING && !playbackError) {
+        if (buffering && isOnline && inForeground && player.playWhenReady && !playbackError) {
+            delay(15_000L)
+            if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING && !playbackError) {
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
                 if (failurePositionMs > 0L) {
                     preferences.edit().putLong(positionKey, failurePositionMs).apply()
