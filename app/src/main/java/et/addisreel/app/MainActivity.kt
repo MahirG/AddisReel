@@ -57,6 +57,7 @@ private fun AddisReelApp() {
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
+    var showFullDescription by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -69,6 +70,7 @@ private fun AddisReelApp() {
         preferences.edit().putString("recently_watched", drama.title).apply()
         selected = drama
         showEpisodes = false
+        showFullDescription = false
         episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
     }
     fun selectEpisode(next: Int) {
@@ -126,7 +128,7 @@ private fun AddisReelApp() {
         if (showEpisodes) {
             AlertDialog(
                 onDismissRequest = { showEpisodes = false },
-                title = { Text(selected.title + " · Episodes") },
+                title = { Column { Text(selected.title); Text("${selected.episodes} episodes · Tap to jump", color = Gold, fontSize = 12.sp) } },
                 text = {
                     LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
                         items((1..selected.episodes).toList()) { number ->
@@ -137,7 +139,8 @@ private fun AddisReelApp() {
                                 Icon(if (number == episode) Icons.Default.PlayArrow else Icons.Default.Movie, contentDescription = null)
                                 Spacer(Modifier.width(12.dp))
                                 Text("Episode $number", modifier = Modifier.weight(1f))
-                                if (number == episode) Text("Current", color = Gold)
+                                if (number == episode) Text("Now playing", color = Gold)
+                                else if (number < episode) Icon(Icons.Default.CheckCircle, contentDescription = "Previously selected", tint = Color.Gray)
                             }
                         }
                     }
@@ -188,18 +191,30 @@ private fun AddisReelApp() {
                                     Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
                             }
+                            Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
+                                    Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
+                                }
+                                FilledTonalIconButton(onClick = { showEpisodes = true }) {
+                                    Icon(Icons.Default.VideoLibrary, contentDescription = "Choose episode")
+                                }
+                                FilledTonalIconButton(onClick = { detailDrama = selected }) {
+                                    Icon(Icons.Default.Info, contentDescription = "Series information")
+                                }
+                            }
                             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
                                 Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
                                 Spacer(Modifier.height(8.dp))
                                 LinearProgressIndicator(progress = { episode.toFloat() / selected.episodes.toFloat() }, modifier = Modifier.fillMaxWidth().height(4.dp), color = Gold, trackColor = Color(0xFF34343B))
-                                Text(selected.description,maxLines=2,overflow=TextOverflow.Ellipsis,color=Color.LightGray)
+                                Text(selected.description, modifier = Modifier.clickable { showFullDescription = !showFullDescription }, maxLines = if (showFullDescription) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, color=Color.LightGray)
+                                Text(if (showFullDescription) "Show less" else "More about this story", modifier = Modifier.clickable { showFullDescription = !showFullDescription }, fontSize = 11.sp, color = Gold)
                                 TextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     OutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
                                     Button(onClick={selectEpisode(episode+1)},enabled=episode<selected.episodes) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
-                                    OutlinedButton(onClick={toggleSaved(selected.title)}) { Icon(if(selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,null) }
+
                                 }
                             }
                         }
