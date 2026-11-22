@@ -52,6 +52,7 @@ public final class StudioActivity extends Activity {
     private final Handler handler=new Handler(Looper.getMainLooper());
     private String chosenSeriesId="",chosenSeriesName="";
     private int chosenEpisodeNumber=0;
+    private boolean refreshedFinished=false;
     private final Runnable refresh=new Runnable(){
         @Override public void run(){
             refreshUploadState();
@@ -157,7 +158,8 @@ public final class StudioActivity extends Activity {
                 }).setNeutralButton("Keep current",null).show();
             return;
         }
-        if(web==null||!web.getUrl().startsWith(UploadController.URL+"/admin")){
+        String current=web==null?null:web.getUrl();
+        if(current==null||!current.startsWith(UploadController.URL+"/admin")){
             message("Open AddisReel Studio and sign in first");return;
         }
         web.evaluateJavascript("(function(){return JSON.stringify(window.addisreelNativeUploadContext ? window.addisreelNativeUploadContext() : {});})()",
@@ -231,6 +233,7 @@ public final class StudioActivity extends Activity {
                         record.put("state","queued");
                         record.put("progress",0);
                         UploadStore.save(this,record);
+                        refreshedFinished=false;
                         UploadController.start(this);
                         refreshUploadState();
                     }catch(Exception error){message("Cannot start upload: "+error.getMessage());}
@@ -251,8 +254,9 @@ public final class StudioActivity extends Activity {
                 "signin".equals(state)||"interrupted".equals(state);
         resumeButton.setVisibility(canResume?View.VISIBLE:View.GONE);
         resumeButton.setText("signin".equals(state)?"Retry":"Resume");
-        if("done".equals(state) && web!=null &&
+        if("done".equals(state) && !refreshedFinished && web!=null &&
            "https://ar.eddieaman475.workers.dev/admin".equals(web.getUrl())){
+            refreshedFinished=true;
             // Don't force a navigation or reset the current editing context.
             web.evaluateJavascript("window.addisreelNativeUploadRefresh && window.addisreelNativeUploadRefresh();",null);
         }
