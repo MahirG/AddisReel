@@ -648,6 +648,34 @@ private fun AddisReelApp() {
             observedOutage = false
         }
     }
+    // Persist a short-drama resume point even when Android terminates the process
+    // without delivering an activity stop or a Compose disposal callback.
+    LaunchedEffect(player, positionKey) {
+        while (true) {
+            delay(5_000L)
+            if (player.isPlaying && player.playbackState != Player.STATE_ENDED) {
+                val position = player.currentPosition
+                val duration = player.duration
+                if (position > 0L && (duration <= 0L || position < duration - 1_000L)) {
+                    preferences.edit().putLong(positionKey, position).apply()
+                }
+            }
+        }
+    }
+    // ExoPlayer can remain in BUFFERING without emitting an error on weak
+    // connections. Detect a prolonged stall and use the same bounded retry path.
+    LaunchedEffect(buffering, isOnline, inForeground, playbackError, player) {
+        if (buffering && isOnline && inForeground && !playbackError) {
+            delay(12_000L)
+            if (player.playbackState == Player.STATE_BUFFERING && !playbackError) {
+                failurePositionMs = player.currentPosition.coerceAtLeast(0L)
+                if (failurePositionMs > 0L) {
+                    preferences.edit().putLong(positionKey, failurePositionMs).apply()
+                }
+                playbackError = true
+            }
+        }
+    }
     var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
     var nextCountdown by remember(url, episodeKey) { mutableIntStateOf(3) }
     var nextRequested by remember(url, episodeKey) { mutableStateOf(false) }
