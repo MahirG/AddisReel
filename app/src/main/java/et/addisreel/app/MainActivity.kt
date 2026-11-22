@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,10 +44,17 @@ class MainActivity : ComponentActivity() {
 }
 @Composable
 private fun AddisReelApp() {
+    val context = LocalContext.current
+    val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(1) }
-    var saved by remember { mutableStateOf(setOf<String>()) }
+    var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
+    fun toggleSaved(title: String) {
+        val updated = if (title in saved) saved - title else saved + title
+        saved = updated
+        preferences.edit().putStringSet("saved_titles", updated).apply()
+    }
     MaterialTheme(colorScheme = darkColorScheme(primary=Gold, background=Dark, surface=Color(0xFF18181E))) {
         Scaffold(containerColor=Dark, bottomBar={
             NavigationBar(containerColor=Color(0xFF141419)) {
@@ -77,7 +85,7 @@ private fun AddisReelApp() {
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     Button(onClick={episode=if(episode<selected.episodes) episode+1 else 1}) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
-                                    OutlinedButton(onClick={saved=if(selected.title in saved) saved-selected.title else saved+selected.title}) { Icon(if(selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,null) }
+                                    OutlinedButton(onClick={toggleSaved(selected.title)}) { Icon(if(selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,null) }
                                 }
                             }
                         }
@@ -95,7 +103,7 @@ private fun AddisReelApp() {
                     2 -> {
                         Header("My Library")
                         if(saved.isEmpty()) Text("Save a series to watch it later.",Modifier.padding(20.dp),color=Color.LightGray)
-                        else LazyColumn { items(catalog.filter{it.title in saved}) { drama -> DramaRow(drama){selected=drama;tab=0} } }
+                        else LazyColumn { items(catalog.filter{it.title in saved}) { drama -> DramaRow(drama){selected=drama;episode=1;tab=0} } }
                     }
                     else -> {
                         Header("AddisReel Premium")
