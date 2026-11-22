@@ -86,10 +86,11 @@ test("MP4 multipart upload assembles parts in correct order and retains content 
   const done=await serve(env,make(path+"?action=finish&uploadId="+session.uploadId,
     "POST",{size,parts}));
   assert.equal(done.status,200);
-  assert.equal((await done.json()).sizeBytes,size);
+  const payload=await done.json();
+  assert.equal(payload.sizeBytes,size);
   const saved=state.completed.get("series/example/episodes/1/video.mp4");
   assert.equal(saved.size,size);
-  assert.equal((await done.json()).optimization,"queued");
+  assert.equal(payload.optimization,"queued");
   assert.equal(saved.options.httpMetadata.contentType,"video/mp4");
 });
 test("upload rejects invalid part numbers, oversized chunks and missing sessions",async()=>{
