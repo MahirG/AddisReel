@@ -30,4 +30,6 @@ Set-ExecutionPolicy -Scope Process Bypass
 - Existing series details, posters, episode ordering and publishing rights are unchanged.
 - No free cloud transcoding is claimed. CPU/electricity, bandwidth and R2 usage may cost money.
 
+**Optional: start on Windows login.** After successful pairing, run `./enable-at-login.ps1` once. This creates a shortcut in your Windows Startup folder. Delete that shortcut to turn off auto-start.
+
 **The PC needs to stay on with this script running.** If it is off, jobs remain queued; no content is lost. Press Ctrl+C to stop.
