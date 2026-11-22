@@ -122,7 +122,7 @@ export default {
           "Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store",
           "X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY",
           "Referrer-Policy":"no-referrer",
-          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; worker-src 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; manifest-src 'self'; worker-src 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"
         }});
       if (request.method === "OPTIONS" && path.startsWith("/v1/") && !path.startsWith("/v1/admin/"))
         return new Response(null,{status:204,headers:{...publicHeaders,"Access-Control-Allow-Methods":"GET, OPTIONS"}});
