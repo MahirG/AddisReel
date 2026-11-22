@@ -12,3 +12,6 @@ Planned ETB checkout through a licensed Ethiopian payment gateway. Never unlock 
 
 ## Content
 Only stream content with distribution rights. Sample entries are placeholders.
+
+## Build verification
+Triggering the GitHub Actions debug APK build for initial device testing.
