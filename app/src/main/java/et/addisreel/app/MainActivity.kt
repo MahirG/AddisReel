@@ -5,6 +5,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -566,14 +567,34 @@ private fun AddisReelApp() {
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
+    var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
+    var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
     var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
     val currentOnEpisodeCompleted by rememberUpdatedState(onEpisodeCompleted)
+    LaunchedEffect(playbackError, retryCount, player) {
+        if (playbackError && retryCount < 2) {
+            retryPending = true
+            delay(if (retryCount == 0) 1500L else 3500L)
+            retryCount += 1
+            playbackError = false
+            buffering = true
+            retryPending = false
+            player.prepare()
+            player.playWhenReady = true
+        } else if (!playbackError) {
+            retryPending = false
+        }
+    }
     DisposableEffect(player) {
         var completed = false
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 playbackEnded = state == Player.STATE_ENDED
+                if (state == Player.STATE_READY) {
+                    retryCount = 0
+                    playbackError = false
+                }
                 if (state == Player.STATE_ENDED && !completed) {
                     completed = true
                     preferences.edit().remove(positionKey).apply()
@@ -617,7 +638,11 @@ private fun AddisReelApp() {
             modifier = Modifier.fillMaxSize()
         )
         if (buffering && !playbackError) {
-            CircularProgressIndicator(color = Gold)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Gold)
+                Spacer(Modifier.height(12.dp))
+                Text("Preparing your episode…", color = Color.White, fontSize = 13.sp)
+            }
         }
         if (playbackEnded && !playbackError) {
             Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
@@ -627,14 +652,19 @@ private fun AddisReelApp() {
         }
         if (playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Video couldn't load", color = Color.White)
+                Text(if (retryPending) "Connection interrupted — reconnecting…" else "Video couldn't load", color = Color.White)
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = {
-                    playbackError = false
-                    buffering = true
-                    player.prepare()
-                    player.playWhenReady = true
-                }) { Text("Try again") }
+                if (retryPending) {
+                    CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
+                } else {
+                    Button(onClick = {
+                        retryCount = 2
+                        playbackError = false
+                        buffering = true
+                        player.prepare()
+                        player.playWhenReady = true
+                    }) { Text("Try again") }
+                }
             }
         }
     }
