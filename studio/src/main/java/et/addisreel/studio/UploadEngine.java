@@ -40,11 +40,7 @@ final class UploadEngine {
             throw new InterruptedIOException("Upload paused or stopped");
     }
     private void status(String text,int percent){
-        JSONObject state=UploadStore.read(app);
-        if(state!=null){
-            try{state.put("message",text);state.put("progress",percent);}catch(Exception ignored){}
-            UploadStore.save(app,state);
-        }
+        UploadStore.updateProgress(app,text,percent);
         listener.report(text,percent);
     }
     private JSONObject request(String path,String method,JSONObject payload,byte[] raw)
@@ -81,7 +77,7 @@ final class UploadEngine {
                 }
             }
             JSONObject result;
-            try{result=new JSONObject(response.toString(StandardCharsets.UTF_8));}
+            try{result=new JSONObject(new String(response.toByteArray(),StandardCharsets.UTF_8));}
             catch(Exception error){throw new IOException("Invalid server reply",error);}
             if(status<200||status>=300)
                 throw new HttpError(status,result.optString("error","Server refused upload"));
@@ -149,7 +145,7 @@ final class UploadEngine {
                 request("/v1/admin/episodes","POST",data("seriesId",series,"number",episode,
                         "title",title,"durationSeconds",0,"status","draft","licensed",false),null);
                 state.put("episodeCreated",true);
-                UploadStore.save(app,state);
+                UploadStore.checkpoint(app,state);
             }
             String base="/v1/admin/uploads/"+url(series)+"/"+episode;
             String session=state.optString("uploadId","");
@@ -160,7 +156,7 @@ final class UploadEngine {
                 state.put("uploadId",session);
                 state.put("partSize",begun.getInt("partSize"));
                 state.put("parts",new JSONArray());
-                UploadStore.save(app,state);
+                UploadStore.checkpoint(app,state);
             }
             int partBytes=state.optInt("partSize",EIGHT_MB);
             if(partBytes!=EIGHT_MB)throw new IOException("Server upload chunk size mismatch");
@@ -200,7 +196,7 @@ final class UploadEngine {
                         throw new IOException("Invalid confirmed upload chunk");
                     existing.put(data("partNumber",n,"etag",done.getString("etag")));
                     state.put("parts",existing);
-                    UploadStore.save(app,state);
+                    UploadStore.checkpoint(app,state);
                     status("Episode "+episode+" · Part "+n+"/"+total,(int)((offset+length)*100/size));
                 }
             }
