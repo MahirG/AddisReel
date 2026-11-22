@@ -1,4 +1,5 @@
 import { adminHtml } from "./admin.js";
+import { parseMovieFields } from "./importer.js";
 
 const publicHeaders = { "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" };
 const JSON_TYPE = "application/json; charset=utf-8";
@@ -92,11 +93,19 @@ export default {
     try {
       if (request.method === "GET" && path === "/health")
         return reply({status:"ok",service:"addisreel-catalog",phase:3});
+      if (request.method === "GET" && path === "/admin/importer.js")
+        return new Response("window.parseMovieFields = " + parseMovieFields.toString() + ";\n", {
+          headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff"
+          }
+        });
       if (request.method === "GET" && path === "/admin")
         return new Response(adminHtml,{headers:{
           "Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store",
           "X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY",
-          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'"
+          "Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'"
         }});
       if (request.method === "OPTIONS" && path.startsWith("/v1/") && !path.startsWith("/v1/admin/"))
         return new Response(null,{status:204,headers:{...publicHeaders,"Access-Control-Allow-Methods":"GET, OPTIONS"}});
