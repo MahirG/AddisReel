@@ -58,6 +58,7 @@ private fun AddisReelApp() {
     var showEpisodes by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
+    var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
     fun selectDrama(drama: Drama) {
@@ -76,6 +77,45 @@ private fun AddisReelApp() {
         preferences.edit().putStringSet("saved_titles", updated).apply()
     }
     MaterialTheme(colorScheme = darkColorScheme(primary=Gold, background=Dark, surface=Color(0xFF18181E))) {
+        detailDrama?.let { drama ->
+            AlertDialog(
+                onDismissRequest = { detailDrama = null },
+                icon = { Icon(Icons.Default.Movie, contentDescription = null, tint = Gold) },
+                title = { Text(drama.title) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(drama.genre + "  •  " + drama.episodes + " episodes", color = Gold)
+                        Text(drama.description)
+                        Text(
+                            "Preview catalog · Video episodes will be available when licensed content is added.",
+                            fontSize = 12.sp,
+                            color = Color.LightGray
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        selectDrama(drama)
+                        detailDrama = null
+                        tab = 0
+                    }) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Text("Open series")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        toggleSaved(drama.title)
+                    }) {
+                        Icon(
+                            if (drama.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = null
+                        )
+                        Text(if (drama.title in saved) "Saved" else "Save")
+                    }
+                }
+            )
+        }
         if (showEpisodes) {
             AlertDialog(
                 onDismissRequest = { showEpisodes = false },
@@ -212,7 +252,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                items(filtered) { drama -> DramaRow(drama) { selectDrama(drama);tab=0 } }
+                                items(filtered) { drama -> DramaRow(drama) { detailDrama = drama } }
                             }
                         }
                     }
