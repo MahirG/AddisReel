@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
-    <application android:label="AddisReel" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:usesCleartextTraffic="false">
+    <application android:label="AddisReel" android:icon="@drawable/ic_addisreel_mark" android:roundIcon="@drawable/ic_addisreel_mark" android:theme="@style/Theme.AddisReel" android:usesCleartextTraffic="false" android:allowBackup="false" android:supportsRtl="true">
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"
             android:exported="false"
