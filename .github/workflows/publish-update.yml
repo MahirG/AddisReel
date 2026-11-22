@@ -1,0 +1,114 @@
+name: Publish AddisReel in-app update
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Release notes shown inside AddisReel
+        required: true
+        type: string
+      confirm_publish:
+        description: Type PUBLISH to confirm this release goes live
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: addisreel-r2-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: inputs.confirm_publish == 'PUBLISH'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: production-updates
+    env:
+      ADDISREEL_KEYSTORE_B64: ${{ secrets.ADDISREEL_KEYSTORE_B64 }}
+      ADDISREEL_KEYSTORE_PASSWORD: ${{ secrets.ADDISREEL_KEYSTORE_PASSWORD }}
+      ADDISREEL_KEY_ALIAS: ${{ secrets.ADDISREEL_KEY_ALIAS }}
+      ADDISREEL_KEY_PASSWORD: ${{ secrets.ADDISREEL_KEY_PASSWORD }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.ADDISREEL_R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.ADDISREEL_R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: 'true'
+      R2_ACCOUNT_ID: 8cd3c74c816b359895b11913b51da3e4
+      R2_BUCKET: addisreel-android-releases
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Validate credentials and prepare Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in ADDISREEL_KEYSTORE_B64 ADDISREEL_KEYSTORE_PASSWORD ADDISREEL_KEY_ALIAS ADDISREEL_KEY_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            test -n "${!key}" || { echo "::error::Missing secret: $key"; exit 1; }
+          done
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -name sdkmanager -type f | head -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+      - name: Build and verify production-signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ADDISREEL_KEYSTORE_PATH="$RUNNER_TEMP/addisreel-release.jks"
+          trap 'rm -f "$ADDISREEL_KEYSTORE_PATH"' EXIT
+          printf '%s' "$ADDISREEL_KEYSTORE_B64" | base64 --decode > "$ADDISREEL_KEYSTORE_PATH"
+          chmod 600 "$ADDISREEL_KEYSTORE_PATH"
+          gradle :app:assembleRelease --no-daemon --console=plain
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | head -1 > "$RUNNER_TEMP/package-info"
+          cat "$RUNNER_TEMP/package-info"
+          python3 - <<'PY'
+          import os, re, json, hashlib, pathlib
+          info = pathlib.Path(os.environ['RUNNER_TEMP'], 'package-info').read_text()
+          m = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", info)
+          if not m: raise SystemExit('Cannot parse APK package/version')
+          package, code, version = m.groups()
+          if package != 'et.addisreel.app': raise SystemExit('Unexpected APK package')
+          if not re.fullmatch(r'\d+\.\d+\.\d+', version): raise SystemExit('Invalid semantic version')
+          apk = pathlib.Path('app/build/outputs/apk/release/app-release.apk')
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          manifest = {'version':version,'versionCode':int(code),'notes':os.environ['RELEASE_NOTES'][:1000], 'objectKey':f'releases/{version}/AddisReel.apk','sha256':digest}
+          pathlib.Path('latest.json').write_text(json.dumps(manifest, separators=(',',':'))+'\n')
+          print('Verified:', package, version, code, digest)
+          PY
+        env:
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+      - name: Publish immutable APK, then update manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
+          KEY="$(python3 -c 'import json; print(json.load(open("latest.json"))["objectKey"])')"
+          VERSION="$(python3 -c 'import json; print(json.load(open("latest.json"))["version"])')"
+          # Never overwrite an existing version; bump versionName and versionCode for each release.
+          if aws --endpoint-url "$ENDPOINT" s3api head-object --bucket "$R2_BUCKET" --key "$KEY" >/dev/null 2>&1; then
+            echo "::error::Release $VERSION already exists. Bump the app version before publishing."
+            exit 1
+          fi
+          aws --endpoint-url "$ENDPOINT" s3 cp app/build/outputs/apk/release/app-release.apk "s3://$R2_BUCKET/$KEY" --content-type application/vnd.android.package-archive
+          aws --endpoint-url "$ENDPOINT" s3 cp latest.json "s3://$R2_BUCKET/releases/latest.json" --content-type application/json --cache-control no-store
+          echo "### AddisReel $VERSION published to R2" >> "$GITHUB_STEP_SUMMARY"
+          echo "Update endpoint: https://addisreel-updates.eddieaman475.workers.dev/v1/latest" >> "$GITHUB_STEP_SUMMARY"
+      - name: Save verified release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AddisReel-published-signed-apk
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            latest.json
+          retention-days: 30
