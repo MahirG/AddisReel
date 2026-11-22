@@ -5,6 +5,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.*
@@ -51,24 +52,34 @@ class MainActivity : ComponentActivity() {
         setContent { AddisReelApp() }
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddisReelApp() {
     val context = LocalContext.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
     var showEpisodes by remember { mutableStateOf(false) }
+    var showFullDescription by remember { mutableStateOf(false) }
+    var cinemaMode by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
-    var selected by remember { mutableStateOf(catalog.first()) }
-    var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
+    var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
+    var selected by remember { mutableStateOf(catalog.find { it.title == recentlyWatched } ?: catalog.first()) }
+    var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)) }
     fun selectDrama(drama: Drama) {
+        recentlyWatched = drama.title
+        preferences.edit().putString("recently_watched", drama.title).apply()
         selected = drama
         showEpisodes = false
+        showFullDescription = false
+        cinemaMode = false
         episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
     }
     fun selectEpisode(next: Int) {
+        recentlyWatched = selected.title
+        preferences.edit().putString("recently_watched", selected.title).apply()
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
@@ -78,6 +89,7 @@ private fun AddisReelApp() {
         saved = updated
         preferences.edit().putStringSet("saved_titles", updated).apply()
     }
+    BackHandler(enabled = cinemaMode && tab == 0) { cinemaMode = false }
     MaterialTheme(colorScheme = darkColorScheme(primary=Gold, background=Dark, surface=Color(0xFF18181E))) {
         detailDrama?.let { drama ->
             AlertDialog(
@@ -119,29 +131,52 @@ private fun AddisReelApp() {
             )
         }
         if (showEpisodes) {
-            AlertDialog(
+            ModalBottomSheet(
                 onDismissRequest = { showEpisodes = false },
-                title = { Text(selected.title + " · Episodes") },
-                text = {
-                    LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                containerColor = Color(0xFF1D1D24),
+                dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) }
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
+                    Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                    Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
+                    Spacer(Modifier.height(14.dp))
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
                         items((1..selected.episodes).toList()) { number ->
-                            TextButton(
+                            val active = number == episode
+                            Surface(
                                 onClick = { selectEpisode(number); showEpisodes = false },
+                                shape = RoundedCornerShape(14.dp),
+                                color = if (active) Color(0xFF403526) else Color(0xFF292930),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(if (number == episode) Icons.Default.PlayArrow else Icons.Default.Movie, contentDescription = null)
-                                Spacer(Modifier.width(12.dp))
-                                Text("Episode $number", modifier = Modifier.weight(1f))
-                                if (number == episode) Text("Current", color = Gold)
+                                Row(
+                                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        if (active) Icons.Default.PlayCircle else Icons.Default.Movie,
+                                        contentDescription = null,
+                                        tint = if (active) Gold else Color.LightGray
+                                    )
+                                    Spacer(Modifier.width(14.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Episode $number", fontWeight = FontWeight.SemiBold)
+                                        if (active) Text("Current episode", fontSize = 11.sp, color = Gold)
+                                    }
+
+                                }
                             }
                         }
                     }
-                },
-                confirmButton = { TextButton(onClick = { showEpisodes = false }) { Text("Close") } }
-            )
+                }
+            }
         }
         Scaffold(containerColor=Dark, bottomBar={
-            NavigationBar(containerColor=Color(0xFF141419)) {
+            if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF141419)) {
                 listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
                     NavigationBarItem(selected=tab==index,onClick={tab=index},icon={Icon(icon,contentDescription=name)},label={Text(name)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Gold,selectedTextColor=Gold,indicatorColor=Color(0xFF333027)))
                 }
@@ -153,7 +188,7 @@ private fun AddisReelApp() {
                         Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF101016))) {
                             val videoUrl = selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl)
+                                Video(videoUrl, selected.title + "_episode_" + episode)
                             } else {
                                 Column(
                                     Modifier.align(Alignment.Center).fillMaxWidth()
@@ -183,20 +218,37 @@ private fun AddisReelApp() {
                                     Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
                                 }
                             }
-                            Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
+                            IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x990C0C10), RoundedCornerShape(50))) {
+                                Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = Gold)
+                            }
+                            if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
+                                    Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
+                                }
+                                FilledTonalIconButton(onClick = { showEpisodes = true }) {
+                                    Icon(Icons.Default.VideoLibrary, contentDescription = "Choose episode")
+                                }
+                                FilledTonalIconButton(onClick = { detailDrama = selected }) {
+                                    Icon(Icons.Default.Info, contentDescription = "Series information")
+                                }
+                            }
+                            if (!cinemaMode) Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
                                 Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=Gold, fontWeight=FontWeight.Bold,fontSize=12.sp)
                                 Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
-                                Text(selected.description,maxLines=2,overflow=TextOverflow.Ellipsis,color=Color.LightGray)
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(progress = { episode.toFloat() / selected.episodes.toFloat() }, modifier = Modifier.fillMaxWidth().height(4.dp), color = Gold, trackColor = Color(0xFF34343B))
+                                Text(selected.description, modifier = Modifier.clickable { showFullDescription = !showFullDescription }, maxLines = if (showFullDescription) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, color=Color.LightGray)
+                                Text(if (showFullDescription) "Show less" else "More about this story", modifier = Modifier.clickable { showFullDescription = !showFullDescription }, fontSize = 11.sp, color = Gold)
                                 TextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     OutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
                                     Button(onClick={selectEpisode(episode+1)},enabled=episode<selected.episodes) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
-                                    OutlinedButton(onClick={toggleSaved(selected.title)}) { Icon(if(selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,null) }
+
                                 }
                             }
                         }
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        if (!cinemaMode) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                             catalog.forEach { drama -> FilterChip(selected=selected==drama,onClick={selectDrama(drama)},label={Text(drama.title)}) }
                         }
                     }
@@ -300,6 +352,26 @@ private fun AddisReelApp() {
                     }
                     2 -> {
                         Header("My Library")
+                        catalog.find { it.title == recentlyWatched }?.let { recent ->
+                            val resumeEpisode = preferences.getInt("episode_" + recent.title, 1).coerceIn(1, recent.episodes)
+                            Card(
+                                onClick = { selectDrama(recent); tab = 0 },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF302536)),
+                                shape = RoundedCornerShape(18.dp)
+                            ) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(36.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("CONTINUE WATCHING", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(recent.title, fontWeight = FontWeight.Bold)
+                                        Text("Resume episode $resumeEpisode of ${recent.episodes}", fontSize = 12.sp, color = Color.LightGray)
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = "Resume series", tint = Gold)
+                                }
+                            }
+                        }
                         if (saved.isEmpty()) {
                             Column(
                                 Modifier.fillMaxWidth().padding(28.dp),
@@ -399,30 +471,33 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String) {
+@Composable private fun Video(url:String, episodeKey:String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
-    val positionKey = remember(url) {
+    val positionKey = remember(url, episodeKey) {
         val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(url.toByteArray(Charsets.UTF_8))
-        "position_" + bytes.joinToString("") { "%02x".format(it) }
+        "position_" + bytes.joinToString("") { "%02x".format(it) } + "_" + episodeKey
     }
-    val player = remember(url) {
+    val player = remember(url, episodeKey) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(url))
             val savedPosition = preferences.getLong(positionKey, 0L)
             if (savedPosition > 0L) seekTo(savedPosition)
-            repeatMode = ExoPlayer.REPEAT_MODE_ONE
+            repeatMode = ExoPlayer.REPEAT_MODE_OFF
             playWhenReady = true
             prepare()
         }
     }
-    var buffering by remember(url) { mutableStateOf(true) }
-    var playbackError by remember(url) { mutableStateOf(false) }
+    var buffering by remember(url, episodeKey) { mutableStateOf(true) }
+    var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
+    var playbackEnded by remember(url, episodeKey) { mutableStateOf(false) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
+                playbackEnded = state == Player.STATE_ENDED
+                if (state == Player.STATE_ENDED) preferences.edit().remove(positionKey).apply()
             }
             override fun onPlayerError(error: PlaybackException) {
                 buffering = false
@@ -462,6 +537,12 @@ private fun AddisReelApp() {
         )
         if (buffering && !playbackError) {
             CircularProgressIndicator(color = Gold)
+        }
+        if (playbackEnded && !playbackError) {
+            Button(onClick = { player.seekTo(0); player.play(); playbackEnded = false }) {
+                Icon(Icons.Default.Replay, contentDescription = null)
+                Text("Replay episode")
+            }
         }
         if (playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
