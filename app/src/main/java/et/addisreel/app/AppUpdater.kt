@@ -17,7 +17,7 @@ data class UpdateRelease(val versionCode: Int, val version: String, val notes: S
 object AppUpdater {
     // Only published GitHub Releases with a downloadable .apk are considered.
     private const val RELEASES = "https://api.github.com/repos/MahirG/AddisReel/releases/latest"
-    fun check(currentVersionCode: Int): UpdateRelease? {
+    fun check(currentVersion: String): UpdateRelease? {
         val connection = (URL(RELEASES).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12000
             readTimeout = 12000
@@ -32,7 +32,9 @@ object AppUpdater {
             val parts = tag.split(".")
             if (parts.size != 3) return null
             val code = parts[0].toIntOrNull()?.times(10000)?.plus((parts[1].toIntOrNull() ?: return null) * 100)?.plus(parts[2].toIntOrNull() ?: return null) ?: return null
-            if (code <= currentVersionCode) return null
+            val currentParts = currentVersion.removePrefix("v").split(".")
+            val currentCode = if (currentParts.size == 3) (currentParts[0].toIntOrNull() ?: 0) * 10000 + (currentParts[1].toIntOrNull() ?: 0) * 100 + (currentParts[2].toIntOrNull() ?: 0) else Int.MAX_VALUE
+            if (code <= currentCode) return null
             val assets = json.getJSONArray("assets")
             for (i in 0 until assets.length()) {
                 val asset = assets.getJSONObject(i)
