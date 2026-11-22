@@ -21,6 +21,7 @@ fun InAppUpdatePanel() {
     var progress by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("Check for new versions without leaving AddisReel.") }
     fun ui(block: () -> Unit) { activity?.runOnUiThread(block) }
+    val currentVersion = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "0.0.0" }
     val currentCode = remember {
         if (Build.VERSION.SDK_INT >= 28)
             context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toInt()
@@ -28,7 +29,7 @@ fun InAppUpdatePanel() {
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("App updates", style = MaterialTheme.typography.titleLarge)
-        Text("Installed version: 0.1.1 • Build $currentCode")
+        Text("Installed version: $currentVersion • Build $currentCode")
         Text(status, style = MaterialTheme.typography.bodyMedium)
         if (busy && release != null) {
             LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
@@ -39,7 +40,7 @@ fun InAppUpdatePanel() {
             status = "Checking for updates…"
             Thread {
                 try {
-                    val latest = AppUpdater.check(currentCode)
+                    val latest = AppUpdater.check(currentVersion)
                     ui {
                         release = latest
                         status = if (latest == null) "You're up to date. No newer published release found."
