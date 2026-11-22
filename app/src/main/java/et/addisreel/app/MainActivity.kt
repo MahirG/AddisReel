@@ -64,14 +64,19 @@ private fun AddisReelApp() {
     var selected by remember { mutableStateOf(catalog.first()) }
     var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1)) }
     fun selectDrama(drama: Drama) {
+        recentlyWatched = drama.title
+        preferences.edit().putString("recently_watched", drama.title).apply()
         selected = drama
         showEpisodes = false
         episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
     }
     fun selectEpisode(next: Int) {
+        recentlyWatched = selected.title
+        preferences.edit().putString("recently_watched", selected.title).apply()
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
+    var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
     var saved by remember { mutableStateOf(preferences.getStringSet("saved_titles", emptySet())?.toSet() ?: emptySet()) }
     fun toggleSaved(title: String) {
         val updated = if (title in saved) saved - title else saved + title
@@ -300,6 +305,26 @@ private fun AddisReelApp() {
                     }
                     2 -> {
                         Header("My Library")
+                        catalog.find { it.title == recentlyWatched }?.let { recent ->
+                            val resumeEpisode = preferences.getInt("episode_" + recent.title, 1).coerceIn(1, recent.episodes)
+                            Card(
+                                onClick = { selectDrama(recent); tab = 0 },
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF302536)),
+                                shape = RoundedCornerShape(18.dp)
+                            ) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(36.dp))
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("CONTINUE WATCHING", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(recent.title, fontWeight = FontWeight.Bold)
+                                        Text("Resume episode $resumeEpisode of ${recent.episodes}", fontSize = 12.sp, color = Color.LightGray)
+                                    }
+                                    Icon(Icons.Default.ChevronRight, contentDescription = "Resume series", tint = Gold)
+                                }
+                            }
+                        }
                         if (saved.isEmpty()) {
                             Column(
                                 Modifier.fillMaxWidth().padding(28.dp),
