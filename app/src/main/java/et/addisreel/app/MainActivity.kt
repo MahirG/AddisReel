@@ -92,7 +92,7 @@ private fun fetchPublishedCatalog(): List<Drama> {
 }
 private fun fetchEpisodeStream(id: String, episode: Int): String? {
     val url = catalogResponse("/v1/play/" + id + "/" + episode).optString("playbackUrl")
-    return url.takeIf { it.startsWith(CATALOG_API + "/v1/media/") && it.endsWith(".m3u8") }
+    return url.takeIf { it.startsWith(CATALOG_API + "/v1/media/") && (it.endsWith(".m3u8") || it.endsWith(".mp4")) }
 }
 
 class MainActivity : ComponentActivity() {
