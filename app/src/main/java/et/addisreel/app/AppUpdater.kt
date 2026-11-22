@@ -10,41 +10,34 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import org.json.JSONObject
 
-data class UpdateRelease(val versionCode: Int, val version: String, val notes: String, val apkUrl: String)
+data class UpdateRelease(val versionCode: Int, val version: String, val notes: String, val apkUrl: String, val sha256: String)
 
 object AppUpdater {
-    // Only published GitHub Releases with a downloadable .apk are considered.
-    private const val RELEASES = "https://api.github.com/repos/MahirG/AddisReel/releases/latest"
+    private const val RELEASES = "https://addisreel-updates.eddieaman475.workers.dev/v1/latest"
     fun check(currentVersion: String): UpdateRelease? {
         val connection = (URL(RELEASES).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12000
             readTimeout = 12000
-            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("Accept", "application/json")
             setRequestProperty("User-Agent", "AddisReel-Android")
         }
         try {
             if (connection.responseCode == 404) return null
             if (connection.responseCode !in 200..299) error("Release service unavailable (${connection.responseCode})")
             val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
-            val tag = json.optString("tag_name").removePrefix("v")
-            val parts = tag.split(".")
-            if (parts.size != 3) return null
-            val code = parts[0].toIntOrNull()?.times(10000)?.plus((parts[1].toIntOrNull() ?: return null) * 100)?.plus(parts[2].toIntOrNull() ?: return null) ?: return null
-            val currentParts = currentVersion.removePrefix("v").split(".")
-            val currentCode = if (currentParts.size == 3) (currentParts[0].toIntOrNull() ?: 0) * 10000 + (currentParts[1].toIntOrNull() ?: 0) * 100 + (currentParts[2].toIntOrNull() ?: 0) else Int.MAX_VALUE
-            if (code <= currentCode) return null
-            val assets = json.getJSONArray("assets")
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                if (asset.optString("name").endsWith(".apk", ignoreCase = true)) {
-                    val link = asset.getString("browser_download_url")
-                    if (!link.startsWith("https://github.com/MahirG/AddisReel/releases/download/")) continue
-                    return UpdateRelease(code, tag, json.optString("body").take(1000), link)
-                }
-            }
-            return null
+            val tag = json.getString("version")
+            val code = json.getInt("versionCode")
+            val parts = tag.split(".").mapNotNull { it.toIntOrNull() }
+            val installed = currentVersion.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
+            if (parts.size != 3 || installed.size != 3) return null
+            if (parts.zip(installed).firstOrNull { it.first != it.second }?.let { it.first < it.second } == true || parts == installed) return null
+            val sha = json.getString("sha256").lowercase()
+            val link = json.getString("apkUrl")
+            if (!sha.matches(Regex("[a-f0-9]{64}")) || !link.startsWith("https://addisreel-updates.eddieaman475.workers.dev/v1/apk/")) return null
+            return UpdateRelease(code, tag, json.optString("notes"), link, sha)
         } finally { connection.disconnect() }
     }
 
@@ -73,6 +66,17 @@ object AppUpdater {
                 }
             }
             if (file.length() < 1024) error("Downloaded APK is invalid")
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val bytes = ByteArray(32768)
+                while (true) {
+                    val n = input.read(bytes)
+                    if (n < 0) break
+                    digest.update(bytes, 0, n)
+                }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            if (!actual.equals(release.sha256, ignoreCase = true)) error("APK integrity check failed")
             progress(100)
             return file
         } catch (e: Exception) {
