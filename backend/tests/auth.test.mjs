@@ -111,7 +111,7 @@ test("owner account setup exchanges token for an HttpOnly persistent session",as
 
 test("setup token cannot create another admin and cannot bypass logged-in session",async()=>{
  const {DB}=fakeDB(),env={DB,ADMIN_TOKEN:token,AUTH_PEPPER:authPepper};
- const initial=options("/v1/auth/setup","POST",{setupToken:token,email,password});
+ const initial=options("/v1/auth/setup","POST",setupPayload);
  assert.equal((await handleAuth(initial,env,new URL(initial.url))).status,201);
  const second=options("/v1/auth/setup","POST",{...setupPayload,email:"other@example.com"});
  assert.equal((await handleAuth(second,env,new URL(second.url))).status,409);
