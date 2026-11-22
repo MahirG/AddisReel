@@ -49,8 +49,26 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.ui.PlayerView
 
+// One bounded on-device cache shared by players; never create a SimpleCache per episode.
+private object StreamCache {
+    @Volatile private var instance: SimpleCache? = null
+    fun get(context: Context): SimpleCache =
+        instance ?: synchronized(this) {
+            instance ?: SimpleCache(
+                java.io.File(context.applicationContext.cacheDir, "stream_segments"),
+                LeastRecentlyUsedCacheEvictor(80L * 1024L * 1024L),
+                StandaloneDatabaseProvider(context.applicationContext)
+            ).also { instance = it }
+        }
+}
 private val Gold = Color(0xFFFFC857)
 private val Dark = Color(0xFF0C0C10)
 private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null, val id:String = "", val posterUrl:String? = null)
@@ -837,7 +855,14 @@ private fun AddisReelApp() {
                 2_500  // resume after rebuffering
             )
             .build()
+        // Cache only media bytes actually requested by the viewer.
+        // LRU eviction caps storage at 80 MiB; no whole-episode predownloads.
+        val cacheFactory = CacheDataSource.Factory()
+            .setCache(StreamCache.get(context))
+            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(cacheFactory))
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .build().apply {
