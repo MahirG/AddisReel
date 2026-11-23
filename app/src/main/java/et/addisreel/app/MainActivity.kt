@@ -169,6 +169,7 @@ class MainActivity : ComponentActivity() {
 private fun AddisReelApp() {
     val context = LocalContext.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
+    val playbackPreferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
     var catalog by remember { mutableStateOf(previewCatalog) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
@@ -770,6 +771,19 @@ private fun AddisReelApp() {
                             })
                             else -> matches
                         }
+                        // Never show a blank Continue Watching row when every visited story is finished.
+                        // The revision invalidates this list immediately after playback reaches the end.
+                        @Suppress("UNUSED_VARIABLE") val watchedRevision = libraryCompletionRevision
+                        val unfinishedHistory = viewingHistory
+                            .mapNotNull { title -> catalog.find { it.title == title } }
+                            .distinctBy { it.id.ifBlank { it.title } }
+                            .filter { drama ->
+                                !PlaybackPolicy.isFullyWatched(
+                                    preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty(),
+                                    drama.episodes
+                                )
+                            }
+                            .take(12)
                         Column(Modifier.fillMaxSize()) {
                             if (homeSearchExpanded) OutlinedTextField(
                                 value = discoverQuery,
@@ -836,13 +850,13 @@ private fun AddisReelApp() {
                                     colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Box(Modifier.fillMaxWidth().height(330.dp).background(Color(0xFF211A2B))) {
+                                        Box(Modifier.fillMaxWidth().height(296.dp).background(Color(0xFF211A2B))) {
                                             if (featured.posterUrl != null) {
-                                                AsyncImage(model = posterModel(featured.posterUrl, 960, 1080), contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                AsyncImage(model = posterModel(featured.posterUrl, 960, 1080), contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize(),
                                                 placeholder = ColorPainter(Color(0xFF34243A)),
                                                 error = ColorPainter(Color(0xFF34243A)))
                                             }
-                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = arrayOf(0f to Color(0x220C0C10), 0.48f to Color.Transparent, 1f to Color(0xFF29202C)))))
+                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = arrayOf(0f to Color(0x110C0C10), 0.42f to Color.Transparent, 0.68f to Color(0xDD29202C), 1f to Color(0xFF29202C)))))
                                             Text("YOUR FEATURED STORY", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
                                         }
                                         Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -850,11 +864,19 @@ private fun AddisReelApp() {
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
                                         Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = Color(0xFFE4E0E7))
                                         val featuredResume = preferences.getInt("episode_" + featured.title, 1).coerceIn(1, featured.episodes.coerceAtLeast(1))
+                                        val featuredCompleted = PlaybackPolicy.isFullyWatched(
+                                            preferences.getStringSet("watched_" + featured.title, emptySet())?.toSet().orEmpty(),
+                                            featured.episodes
+                                        )
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                            Button(onClick = { selectDrama(featured); tab = 0 }, modifier = Modifier.weight(1f)) {
+                                            Button(onClick = {
+                                                selectDrama(featured)
+                                                if (featuredCompleted) selectEpisode(1)
+                                                tab = 0
+                                            }, modifier = Modifier.weight(1f)) {
                                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
                                                 Spacer(Modifier.width(6.dp))
-                                                Text(if (featuredResume > 1) "Resume Episode $featuredResume" else "Start Watching", maxLines = 1)
+                                                Text(if (featuredCompleted) "Watch Again" else if (featuredResume > 1) "Resume Episode $featuredResume" else "Start Watching", maxLines = 1)
                                             }
                                             OutlinedButton(onClick = { toggleSaved(featured.title) }) {
                                                 Icon(if (featured.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = if (featured.title in saved) "Remove from My List" else "Add to My List")
@@ -866,7 +888,7 @@ private fun AddisReelApp() {
                             }
                                     }
 
-                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && unfinishedHistory.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -877,14 +899,7 @@ private fun AddisReelApp() {
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
-                                                    .distinctBy { it.title }
-                                                    .filter { drama ->
-                                                        val completed = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
-                                                        completed < drama.episodes
-                                                    }
-                                                    .take(12)
-                                                    .forEach { drama ->
+                                                unfinishedHistory.forEach { drama ->
                                                         val resume = preferences.getInt("episode_" + drama.title, 1)
                                                             .coerceIn(1, drama.episodes)
                                                         ElevatedCard(
@@ -907,10 +922,16 @@ private fun AddisReelApp() {
                                                                     Icon(Icons.Default.PlayArrow, contentDescription = "Resume playback", tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(26.dp))
                                                                 }
                                                                 Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                                Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
-                                                                val completedCount = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
+                                                                val mediaKey = (drama.id.ifBlank { drama.title }) + "_episode_" + resume
+                                                                val savedPositionMs = playbackPreferences.getLong("position_" + mediaKey, 0L)
+                                                                val savedDurationMs = playbackPreferences.getLong("duration_" + mediaKey, 0L)
+                                                                val resumePositionLabel = if (savedPositionMs >= 5_000L)
+                                                                    " · ${savedPositionMs / 60_000}:${((savedPositionMs / 1000) % 60).toString().padStart(2, '0')} saved" else ""
+                                                                Text("Episode $resume of ${drama.episodes}$resumePositionLabel", fontSize = 12.sp, color = Gold, maxLines = 1)
+                                                                val watchedEpisodes = preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty()
+                                                                val completedCount = (1..drama.episodes).count { it.toString() in watchedEpisodes }
                                                                 LinearProgressIndicator(
-                                                                    progress = { completedCount.coerceIn(0, drama.episodes).toFloat() / drama.episodes.coerceAtLeast(1) },
+                                                                    progress = { PlaybackPolicy.seriesProgress(watchedEpisodes, drama.episodes, resume, savedPositionMs, savedDurationMs) },
                                                                     modifier = Modifier.fillMaxWidth().height(3.dp),
                                                                     color = Gold,
                                                                     trackColor = Color(0xFF34343B)
@@ -920,6 +941,26 @@ private fun AddisReelApp() {
                                                         }
                                                     }
                                             }
+                                        }
+                                    }
+                                }
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" &&
+                                    viewingHistory.isNotEmpty() && unfinishedHistory.isEmpty()) {
+                                    item {
+                                        Row(
+                                            Modifier.fillMaxWidth()
+                                                .background(Color(0xFF211C27), RoundedCornerShape(18.dp))
+                                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold)
+                                            Spacer(Modifier.width(12.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                Text("All caught up!", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                Text("You've finished your recent stories. Find what to watch next.",
+                                                    fontSize = 12.sp, color = Color.LightGray, lineHeight = 17.sp)
+                                            }
+                                            TextButton(onClick = { tab = 2; libraryFilter = "Completed" }) { Text("View") }
                                         }
                                     }
                                 }
@@ -1394,7 +1435,10 @@ private fun AddisReelApp() {
                 val position = player.currentPosition
                 val duration = player.duration
                 if (position > 0L && (duration <= 0L || position < duration - 1_000L)) {
-                    preferences.edit().putLong(positionKey, position).apply()
+                    preferences.edit().apply {
+                        putLong(positionKey, position)
+                        if (duration > 0L) putLong("duration_" + episodeKey, duration)
+                    }.apply()
                 }
             }
         }
@@ -1500,7 +1544,7 @@ private fun AddisReelApp() {
                 }
                 if (state == Player.STATE_ENDED && !completed) {
                     completed = true
-                    preferences.edit().remove(positionKey).apply()
+                    preferences.edit().remove(positionKey).remove("duration_" + episodeKey).apply()
                     currentOnWatchedToEnd()
                 }
             }
