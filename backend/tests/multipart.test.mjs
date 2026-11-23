@@ -109,3 +109,30 @@ test("simple Studio keeps the same three steps and now resumes interrupted video
   assert.match(wizardScript,/addisreelOpenSeries/);
   assert.doesNotThrow(()=>new Function(wizardScript));
 });
+
+test("R2 short opaque upload IDs are accepted instead of rejected by an arbitrary length limit",async()=>{
+  const {env,state}=fakeEnv();
+  const originalCreate=env.MEDIA.createMultipartUpload;
+  env.MEDIA.createMultipartUpload=async(key,options)=>{
+    const uploadId="x";
+    state.sessions.set(uploadId,{key,options,parts:new Map(),active:true});
+    return {key,uploadId};
+  };
+  const path="/v1/admin/uploads/example/1";
+  const started=await serve(env,make(path+"?action=start","POST",{name:"clip.mp4",size:1}));
+  assert.equal(started.status,200);
+  const {uploadId}=await started.json();
+  const sent=await serve(env,make(path+"?action=part&partNumber=1&uploadId="+uploadId,
+    "PUT",new Uint8Array([42]),"application/octet-stream"));
+  assert.equal(sent.status,200);
+  const completed=await serve(env,make(path+"?action=finish&uploadId="+uploadId,
+    "POST",{size:1,parts:[await sent.json()]}));
+  assert.equal(completed.status,200);
+});
+test("Missing upload session gets a resumable 409 error instead of a generic rejection",async()=>{
+  const {env}=fakeEnv();
+  const response=await serve(env,make("/v1/admin/uploads/example/1?action=part&partNumber=1",
+    "PUT",new Uint8Array([42]),"application/octet-stream"));
+  assert.equal(response.status,409);
+  assert.match((await response.json()).error,/Invalid upload session/);
+});

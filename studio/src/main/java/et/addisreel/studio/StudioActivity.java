@@ -49,9 +49,9 @@ public final class StudioActivity extends Activity {
     private static final int PICK_NATIVE = 430;
     private static final int PICK_WEB = 431;
     private WebView web;
-    private TextView transferText;
+    private TextView transferTitle,transferText;
     private ProgressBar transferProgress;
-    private Button uploadButton, resumeButton, activityBell; 
+    private Button uploadButton, pauseButton, resumeButton, activityBell; 
     private ActivityCenter activityCenter;
     private final ExecutorService processingExecutor=Executors.newSingleThreadExecutor();
     private final AtomicBoolean syncing=new AtomicBoolean(false);
@@ -115,18 +115,28 @@ public final class StudioActivity extends Activity {
         LinearLayout status=new LinearLayout(this);status.setOrientation(LinearLayout.HORIZONTAL);
         status.setGravity(Gravity.CENTER_VERTICAL);status.setPadding(dp(15),dp(7),dp(12),dp(7));
         status.setBackgroundColor(Color.rgb(34,29,33));
-        transferText=label("Sign in to manage short dramas",11,Color.rgb(231,204,168));
-        status.addView(transferText,new LinearLayout.LayoutParams(0,dp(39),1));
+        LinearLayout transferLabels=new LinearLayout(this);
+        transferLabels.setOrientation(LinearLayout.VERTICAL);
+        transferLabels.setGravity(Gravity.CENTER_VERTICAL);
+        transferTitle=label("STUDIO READY",13,Color.rgb(248,216,163));
+        transferTitle.setTypeface(null,1);
+        transferText=label("Tap here to view upload activity",12,Color.rgb(235,221,206));
+        transferLabels.addView(transferTitle);
+        transferLabels.addView(transferText);
+        status.addView(transferLabels,new LinearLayout.LayoutParams(0,dp(64),1));
         status.setOnClickListener(v->openActivityCenter());
-        status.setContentDescription("Live video upload and processing information. Tap to open Activity Center.");
+        status.setContentDescription("Live video upload, confirmed progress, and processing. Tap to open Activity Center.");
+        pauseButton=new Button(this);pauseButton.setText("Pause");pauseButton.setTextSize(11);
+        pauseButton.setAllCaps(false);pauseButton.setVisibility(View.GONE);
+        status.addView(pauseButton,new LinearLayout.LayoutParams(dp(79),dp(42)));
         resumeButton=new Button(this);resumeButton.setText("Resume");resumeButton.setTextSize(11);
         resumeButton.setAllCaps(false);resumeButton.setVisibility(View.GONE);
-        status.addView(resumeButton,new LinearLayout.LayoutParams(dp(85),dp(40)));
+        status.addView(resumeButton,new LinearLayout.LayoutParams(dp(85),dp(42)));
         root.addView(status);
         transferProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         transferProgress.setMax(100);transferProgress.setVisibility(View.GONE);
         transferProgress.setProgressTintList(android.content.res.ColorStateList.valueOf(Color.rgb(242,189,111)));
-        root.addView(transferProgress,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(4)));
+        root.addView(transferProgress,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(8)));
 
         web=new WebView(this);
         web.setBackgroundColor(Color.rgb(11,11,14));
@@ -165,9 +175,15 @@ public final class StudioActivity extends Activity {
         setContentView(root);
         uploadButton.setOnClickListener(v->requestNativeUpload());
         activityBell.setOnClickListener(v->openActivityCenter());
+        pauseButton.setOnClickListener(v->{UploadController.pause(this);refreshUploadState();});
         resumeButton.setOnClickListener(v->{
+            JSONObject saved=UploadStore.read(this);
+            if(saved!=null&&"signin".equals(saved.optString("state"))){
+                message("Sign in to Studio first, then tap Resume.");
+                return;
+            }
             try{UploadController.start(this);refreshUploadState();}
-            catch(Exception error){Toast.makeText(this,error.getMessage(),Toast.LENGTH_LONG).show();}
+            catch(Exception error){message(error.getMessage());}
         });
         web.loadUrl(UploadController.URL+"/admin");
     }
@@ -175,14 +191,9 @@ public final class StudioActivity extends Activity {
     private void requestNativeUpload(){
         JSONObject pending=UploadStore.read(this);
         if(pending!=null && !"done".equals(pending.optString("state"))){
-            new AlertDialog.Builder(this).setTitle("An upload is already saved")
-                .setMessage("Resume the saved episode, or discard that progress before selecting a new movie?")
-                .setPositiveButton("Resume",(d,w)->{
-                    try{UploadController.start(this);}catch(Exception e){message(e.getMessage());}
-                })
-                .setNegativeButton("Discard & choose new",(d,w)->{
-                    UploadController.cancel(this);requestNativeUpload();
-                }).setNeutralButton("Keep current",null).show();
+            // Never enqueue another transfer for the same episode from repeated taps.
+            // Pause, Resume and Cancel are explicit in the live activity panel.
+            openActivityCenter();
             return;
         }
         String current=web==null?null:web.getUrl();
@@ -199,10 +210,12 @@ public final class StudioActivity extends Activity {
                     chosenEpisodeNumber=context.optInt("nextEpisodeNumber",0);
                     if(!chosenSeriesId.matches("[a-z0-9][a-z0-9-]{0,63}")||
                        chosenEpisodeNumber<1||chosenEpisodeNumber>10000){
-                        message("Save or select a series in Studio first, then tap Upload MP4");return;
+                        message("In Create & edit, select a series and tap Save & continue. Then tap Upload MP4.");return;
                     }
                     Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    pick.setType("video/mp4");
+                    // Accept Android providers that label MP4 files as generic videos.
+                    // The selected document is still checked as MP4 before upload.
+                    pick.setType("video/*");
                     pick.addCategory(Intent.CATEGORY_OPENABLE);
                     pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|
                         Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
@@ -230,9 +243,22 @@ public final class StudioActivity extends Activity {
                 name=cursor.getString(0);
                 if(!cursor.isNull(1))size=cursor.getLong(1);
             }
-        }catch(Exception error){message("Cannot read selected video");return;}
-        if(name==null||!name.toLowerCase(Locale.ROOT).endsWith(".mp4")||
-            size<1||size>1024L*1024*1024){message("Choose an MP4 file from 1 byte to 1 GB");return;}
+        }catch(Exception ignored){ /* Some Android document providers omit metadata. */ }
+        // Resolve size without reading the entire video on the UI thread.
+        if(size<1){
+            try(android.content.res.AssetFileDescriptor fd=
+                    getContentResolver().openAssetFileDescriptor(uri,"r")){
+                if(fd!=null && fd.getLength()>0)size=fd.getLength();
+            }catch(Exception ignored){}
+        }
+        if(name==null||name.trim().isEmpty())name="episode.mp4";
+        if(!name.toLowerCase(Locale.ROOT).endsWith(".mp4")){
+            String mime=getContentResolver().getType(uri);
+            if("video/mp4".equalsIgnoreCase(mime))name=name+".mp4";
+            else{message("This video is not MP4. Convert it to MP4 first.");return;}
+        }
+        if(size<1){message("Android could not read this video's size. Save the MP4 to local Files and select it again.");return;}
+        if(size>1024L*1024*1024){message("This MP4 exceeds the 1 GB upload limit.");return;}
         final String finalName=name;
         final long finalSize=size;
         EditText editor=new EditText(this);
@@ -294,49 +320,75 @@ public final class StudioActivity extends Activity {
         if(activityCenter!=null&&activityCenter.isOpen())return;
         activityCenter=ActivityCenter.show(this);
     }
+    private static String mb(long bytes){
+        return String.format(Locale.US,"%.1f",Math.max(0,bytes)/1048576d);
+    }
     private void refreshUploadState(){
         JSONObject info=UploadStore.read(this);
         int notifications=ActivityJournal.unread(this);
         activityBell.setText(notifications>0?"🔔 "+Math.min(notifications,99):"🔔");
         if(info==null){
-            transferText.setText("● Studio ready · Tap for activity history");
-            transferProgress.setVisibility(View.GONE);resumeButton.setVisibility(View.GONE);
+            transferTitle.setText("STUDIO READY");
+            transferText.setText("Choose a saved series, then upload an MP4");
+            transferProgress.setVisibility(View.GONE);
+            pauseButton.setVisibility(View.GONE);
+            resumeButton.setVisibility(View.GONE);
+            uploadButton.setText("↑ Upload MP4");
             if(activityCenter!=null)activityCenter.update();
             return;
         }
         String state=info.optString("state");
-        JSONObject remote=OptimizationClient.matching(this,info.optString("seriesId"),
-            info.optInt("episodeNumber"));
+        String stage=info.optString("stage");
+        boolean done="done".equals(state);
+        boolean active="queued".equals(state)||"running".equals(state);
+        long total=info.optLong("size",0);
+        long confirmed=Math.max(0,Math.min(total,info.optLong("confirmedBytes",0)));
+        long sending=Math.max(confirmed,Math.min(total,info.optLong("sendingBytes",confirmed)));
+        int percent=total>0?(int)Math.min(100,100L*confirmed/total):0;
+        int sendingPercent=total>0?(int)Math.min(100,100L*sending/total):0;
+        int episode=info.optInt("episodeNumber");
+        JSONObject remote=OptimizationClient.matching(this,info.optString("seriesId"),episode);
         String jobState=remote==null?"":remote.optString("status");
-        String details="Episode "+info.optInt("episodeNumber")+" · "+info.optString("message","Working");
-        if("done".equals(state)){
-            details="Episode "+info.optInt("episodeNumber")+" · "+
-                (remote==null?"Checking processing queue":OptimizationClient.stateLabel(jobState));
-        }else if("running".equals(state)||"queued".equals(state)){
-            long sent=info.optLong("confirmedBytes",0),total=info.optLong("size",0);
-            int percent=total>0?(int)Math.min(100,100*sent/total):0;
-            details="● Uploading Episode "+info.optInt("episodeNumber")+" · "+percent+"% confirmed";
+        String message=info.optString("message","Preparing your video");
+        if(done){
+            transferTitle.setText("✓ EPISODE "+episode+" UPLOADED");
+            transferText.setText(remote==null?"R2 verified · Checking optimization":
+                OptimizationClient.stateLabel(jobState));
+        }else if(active){
+            transferTitle.setText("● EPISODE "+episode+" · "+
+                (sending>confirmed?sendingPercent+"% SENDING":percent+"% VERIFIED"));
+            transferText.setText(mb(sending)+" MB sending · "+mb(confirmed)+" / "+
+                mb(total)+" MB R2-verified\n"+message);
+        }else if("paused".equals(state)){
+            transferTitle.setText("Ⅱ EPISODE "+episode+" · PAUSED");
+            transferText.setText(mb(confirmed)+" / "+mb(total)+" MB saved · Tap Resume");
+        }else if("error".equals(state)||"interrupted".equals(state)||"signin".equals(state)){
+            transferTitle.setText("! EPISODE "+episode+" · NEEDS ATTENTION");
+            transferText.setText(message+" · "+percent+"% verified");
+        }else {
+            transferTitle.setText("EPISODE "+episode+" · "+state.toUpperCase(Locale.ROOT));
+            transferText.setText(message);
         }
-        transferText.setText(details);
-        boolean remoteBusy="done".equals(state) && ("queued".equals(jobState)||
+        uploadButton.setText(done?"↑ Upload MP4":"View upload");
+        boolean remoteBusy=done&&("queued".equals(jobState)||
             "processing".equals(jobState)||jobState.isEmpty());
         transferProgress.setVisibility(View.VISIBLE);
-        transferProgress.setIndeterminate(remoteBusy);
-        if(!remoteBusy){
-            long total=info.optLong("size",0),sent=info.optLong("confirmedBytes",0);
-            int accurate=total>0?(int)Math.min(100,100*sent/total):0;
-            transferProgress.setProgress("done".equals(state)?100:accurate);
-        }
+        // A pulsing bar means the first part is in flight; verified bytes
+        // are still 0 and no unconfirmed progress is presented as saved.
+        boolean initialTransfer=active&&"uploading".equals(stage)&&sending==0;
+        transferProgress.setIndeterminate(remoteBusy||initialTransfer);
+        if(!remoteBusy&&!initialTransfer)
+            transferProgress.setProgress(done?100:active?sendingPercent:percent);
+        pauseButton.setVisibility(active?View.VISIBLE:View.GONE);
         boolean canResume="paused".equals(state)||"error".equals(state)||
-                "signin".equals(state)||"interrupted".equals(state);
+            "signin".equals(state)||"interrupted".equals(state);
         resumeButton.setVisibility(canResume?View.VISIBLE:View.GONE);
         resumeButton.setText("signin".equals(state)?"Sign in":"Resume");
         if(activityCenter!=null)activityCenter.update();
-        if("done".equals(state) && !refreshedFinished && web!=null &&
-           "https://ar.eddieaman475.workers.dev/admin".equals(web.getUrl())){
+        if(done&&!refreshedFinished&&web!=null&&
+            (UploadController.URL+"/admin").equals(web.getUrl())){
             refreshedFinished=true;
             syncProcessing(true);
-            // Don't force a navigation or reset the current editing context.
             web.evaluateJavascript("window.addisreelNativeUploadRefresh && window.addisreelNativeUploadRefresh();",null);
         }
     }

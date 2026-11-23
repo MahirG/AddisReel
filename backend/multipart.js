@@ -12,7 +12,8 @@ function respond(value,status=200) {
 }
 function fail(message,status=400) {return respond({error:message},status);}
 function validId(value) {
-  return typeof value==="string" && value.length>=8 && value.length<=256 &&
+  // Cloudflare R2 upload IDs are opaque: do not impose an undocumented minimum length.
+  return typeof value==="string" && value.length>0 && value.length<=256 &&
     !/[\u0000-\u001f\u007f]/.test(value);
 }
 function partListGood(parts, expected) {
@@ -42,7 +43,7 @@ export async function handleMultipartUpload(request,env,url,seriesId,number) {
       maxBytes:MAX_VIDEO_BYTES});
   }
   const uploadId=url.searchParams.get("uploadId");
-  if(!validId(uploadId))return fail("Invalid upload session.");
+  if(!validId(uploadId))return fail("Invalid upload session. Reopen Studio and tap Resume.",409);
   const upload=env.MEDIA.resumeMultipartUpload(key,uploadId);
   try {
     if(request.method==="PUT" && action==="part") {

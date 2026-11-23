@@ -1,4 +1,4 @@
-# AddisReel Studio — Native Android 1.0.0
+# AddisReel Studio — Native Android 2.0.1
 
 Standalone administrator Android APK, package **`et.addisreel.studio`**. It does **not** replace the viewer app `et.addisreel.app`.
 
@@ -37,3 +37,10 @@ GitHub Actions workflow: `.github/workflows/studio-android.yml`. The APK is in `
 ## Validation status
 
 The CI build compiles and cryptographically checks the APK. A physical Android login, 1 GB upload, minimized transfer, Pause/Resume, and post-upload FFmpeg playback still require device end-to-end verification before claiming full production readiness.
+
+## 2.0.1 upload reliability
+
+- The Android file picker shows provider-labeled videos but validates MP4 format before upload.
+- When metadata omits the file size, Studio attempts to read it from the Android file descriptor.
+- If Android rejects user-initiated jobs, Studio tries a user-started foreground transfer; Pause stops either transfer type.
+- Specific messages explain unsupported video and file-size problems without clearing a saved transfer.

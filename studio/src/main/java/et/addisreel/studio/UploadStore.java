@@ -57,6 +57,21 @@ final class UploadStore {
         }catch(Exception error){throw new java.io.IOException("Unable to save upload checkpoint",error);}
         save(context,current);
     }
+    /** Discard only a stale multipart session; keep the original document URI and episode. */
+    static synchronized void resetMultipartSession(Context context) {
+        JSONObject current=read(context);
+        if(current==null||"paused".equals(current.optString("state")))return;
+        current.remove("uploadId");
+        current.remove("partSize");
+        try{
+            current.put("parts",new org.json.JSONArray());
+            current.put("confirmedBytes",0);
+            current.put("sendingBytes",0);
+            current.put("progress",0);
+            current.put("stage","preparing");
+        }catch(Exception ignored){}
+        save(context,current);
+    }
     static synchronized void updateProgress(Context context,String text,int percent) {
         JSONObject current=read(context);
         if(current==null||"paused".equals(current.optString("state")))return;
@@ -64,10 +79,24 @@ final class UploadStore {
         catch(Exception ignored){}
         save(context,current);
     }
+    /** Bytes handed to Android's transport; never count as R2-confirmed parts. */
+    static synchronized void updateSendingBytes(Context context,long bytes) {
+        JSONObject current=read(context);
+        if(current==null||"paused".equals(current.optString("state")))return;
+        long total=current.optLong("size",0);
+        long confirmed=current.optLong("confirmedBytes",0);
+        try{current.put("sendingBytes",Math.max(confirmed,Math.min(total,Math.max(0,bytes))));}
+        catch(Exception ignored){}
+        save(context,current);
+    }
     static synchronized void updateConfirmedBytes(Context context,long bytes) {
         JSONObject current=read(context);
         if(current==null||"paused".equals(current.optString("state")))return;
-        try{current.put("confirmedBytes",Math.max(0,bytes));}
+        try{
+            long confirmed=Math.max(0,bytes);
+            current.put("confirmedBytes",confirmed);
+            current.put("sendingBytes",Math.max(current.optLong("sendingBytes"),confirmed));
+        }
         catch(Exception ignored){}
         save(context,current);
     }
