@@ -18,6 +18,7 @@ import android.provider.OpenableColumns;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.webkit.CookieManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -81,6 +82,15 @@ public final class StudioActivity extends Activity {
 
         LinearLayout root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(12,11,15));
+        // Android 15+ draws apps edge to edge. Respect system bars and cutouts.
+        if(Build.VERSION.SDK_INT>=35){
+            root.setOnApplyWindowInsetsListener((view,insets)->{
+                android.graphics.Insets safe=insets.getInsets(
+                    WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+                view.setPadding(safe.left,safe.top,safe.right,safe.bottom);
+                return insets;
+            });
+        }
         LinearLayout top=new LinearLayout(this);
         top.setPadding(dp(16),dp(12),dp(14),dp(11));top.setGravity(Gravity.CENTER_VERTICAL);
         top.setBackgroundColor(Color.rgb(29,26,33));
@@ -325,6 +335,7 @@ public final class StudioActivity extends Activity {
         if("done".equals(state) && !refreshedFinished && web!=null &&
            "https://ar.eddieaman475.workers.dev/admin".equals(web.getUrl())){
             refreshedFinished=true;
+            syncProcessing(true);
             // Don't force a navigation or reset the current editing context.
             web.evaluateJavascript("window.addisreelNativeUploadRefresh && window.addisreelNativeUploadRefresh();",null);
         }
