@@ -168,6 +168,8 @@ private fun AddisReelApp() {
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
+    var discoverOnlySaved by remember { mutableStateOf(false) }
+    var discoverOnlyUnwatched by remember { mutableStateOf(false) }
     var libraryFilter by remember { mutableStateOf("Saved") }
     var libraryCompletionRevision by remember { mutableIntStateOf(0) }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
@@ -654,7 +656,9 @@ private fun AddisReelApp() {
                         if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
-                            (discoverGenre == "All" || drama.genre == discoverGenre) &&
+                            (!discoverOnlySaved || drama.title in saved) &&
+                                (!discoverOnlyUnwatched || (preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0) < drama.episodes) &&
+                                (discoverGenre == "All" || drama.genre == discoverGenre) &&
                                 (discoverQuery.isBlank() ||
                                     drama.title.contains(discoverQuery.trim(), ignoreCase = true) ||
                                     drama.genre.contains(discoverQuery.trim(), ignoreCase = true) ||
@@ -663,6 +667,10 @@ private fun AddisReelApp() {
                         val filtered = when (discoverSort) {
                             "A–Z" -> matches.sortedBy { it.title }
                             "Most episodes" -> matches.sortedByDescending { it.episodes }
+                            "Recently watched" -> matches.sortedWith(compareBy { drama ->
+                                val index = viewingHistory.indexOf(drama.title)
+                                if (index < 0) Int.MAX_VALUE else index
+                            })
                             else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
@@ -716,13 +724,18 @@ private fun AddisReelApp() {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(Icons.Default.Sort, contentDescription = null, tint = Color.LightGray)
-                                listOf("Featured", "A–Z", "Most episodes").forEach { sort ->
+                                listOf("Featured", "A–Z", "Most episodes", "Recently watched").forEach { sort ->
                                     FilterChip(
                                         selected = discoverSort == sort,
                                         onClick = { discoverSort = sort },
                                         label = { Text(sort) }
                                     )
                                 }
+                            }
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(selected = discoverOnlySaved, onClick = { discoverOnlySaved = !discoverOnlySaved }, label = { Text("Saved only") })
+                                FilterChip(selected = discoverOnlyUnwatched, onClick = { discoverOnlyUnwatched = !discoverOnlyUnwatched }, label = { Text("Not completed") })
+                                if (discoverOnlySaved || discoverOnlyUnwatched) TextButton(onClick = { discoverOnlySaved = false; discoverOnlyUnwatched = false }) { Text("Reset") }
                             }
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
@@ -790,7 +803,7 @@ private fun AddisReelApp() {
                                             Spacer(Modifier.height(12.dp))
                                             Text("No dramas found", fontWeight = FontWeight.Bold)
                                             Text("Try another title or genre", color = Color.LightGray)
-                                            TextButton(onClick = { discoverQuery = ""; discoverGenre = "All" }) { Text("Clear filters") }
+                                            TextButton(onClick = { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false; discoverSort = "Featured" }) { Text("Clear filters") }
                                         }
                                     }
                                 }
