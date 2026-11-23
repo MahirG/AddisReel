@@ -146,7 +146,8 @@ private fun AddisReelApp() {
     var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
     // Signed playback URLs may expire. Never reuse a prefetched URL indefinitely.
     var prefetchedAtMs by remember { mutableLongStateOf(0L) }
-    var tab by remember { mutableIntStateOf(0) }
+    // Open on the cinematic drama storefront; playback is a deliberate viewer action.
+    var tab by remember { mutableIntStateOf(1) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
     // Viewers can move between short episodes with a deliberate vertical swipe.
@@ -427,7 +428,7 @@ private fun AddisReelApp() {
         }
         Scaffold(containerColor=Dark, bottomBar={
             if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF101014), tonalElevation=0.dp) {
-                listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
+                listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Home",Icons.Default.Home,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
                     NavigationBarItem(
                         selected=tab==index,
                         onClick={tab=index},
@@ -682,7 +683,7 @@ private fun AddisReelApp() {
                         }
                     }
                     1 -> {
-                        Header("Discover")
+                        Header("AddisReel")
                         if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
@@ -708,22 +709,6 @@ private fun AddisReelApp() {
                             else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
-                            if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
-                                val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
-                                ElevatedCard(
-                                    onClick = { selectDrama(featured); tab = 0 },
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
-                                ) {
-                                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("FEATURED ON ADDISREEL", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                                        Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
-                                        Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text("▶  Start watching", color = Gold, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                            }
                             OutlinedTextField(
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
@@ -775,6 +760,108 @@ private fun AddisReelApp() {
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
+                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
+                                    item {
+                                ElevatedCard(
+                                    onClick = { selectDrama(featured); tab = 0 },
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF211A2B))) {
+                                            if (featured.posterUrl != null) {
+                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                            }
+                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF29202C)))))
+                                            Text("FEATURED DRAMA", modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        }
+                                        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
+                                        Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text("▶  Watch now", color = Gold, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
+                            }
+                                    }
+
+                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text("Stories for you", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                                            Text("Ethiopian short dramas · Tap a poster to watch", fontSize = 12.sp, color = Color.LightGray)
+                                            Row(
+                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                catalog.sortedWith(compareByDescending<Drama> { favoriteGenres[it.genre] ?: 0 }
+                                                    .thenByDescending { it.title in saved }).take(10).forEach { drama ->
+                                                    Card(
+                                                        onClick = { selectDrama(drama); tab = 0 },
+                                                        modifier = Modifier.width(142.dp),
+                                                        shape = RoundedCornerShape(16.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B29))
+                                                    ) {
+                                                        Column {
+                                                            Box(Modifier.fillMaxWidth().height(198.dp).background(Color(0xFF34243A))) {
+                                                                if (drama.posterUrl != null) {
+                                                                    AsyncImage(
+                                                                        model = drama.posterUrl,
+                                                                        contentDescription = "Poster for " + drama.title,
+                                                                        contentScale = ContentScale.Crop,
+                                                                        modifier = Modifier.fillMaxSize()
+                                                                    )
+                                                                } else {
+                                                                    Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(48.dp))
+                                                                }
+                                                                Text(
+                                                                    "${drama.episodes} EP",
+                                                                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                                                                        .background(Color(0xCC141018), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+                                                                    fontSize = 10.sp, color = Color.White
+                                                                )
+                                                            }
+                                                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text(drama.genre, fontSize = 11.sp, color = Gold)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text("Explore more dramas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                                catalog.asReversed().take(10).forEach { drama ->
+                                                    Card(
+                                                        onClick = { detailDrama = drama },
+                                                        modifier = Modifier.width(130.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B29)),
+                                                        shape = RoundedCornerShape(14.dp)
+                                                    ) {
+                                                        Column {
+                                                            Box(Modifier.fillMaxWidth().height(178.dp).background(Color(0xFF34243A))) {
+                                                                if (drama.posterUrl != null) {
+                                                                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                                                } else {
+                                                                    Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(42.dp))
+                                                                }
+                                                            }
+                                                            Text(drama.title, modifier = Modifier.padding(10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 if (discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
