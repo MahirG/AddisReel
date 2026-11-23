@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Precision
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,6 +79,21 @@ private object StreamCache {
             ).also { instance = it }
         }
 }
+// Decode posters close to their display resolution rather than allocating full-resolution bitmaps.
+// Coil reuses its memory/disk caches across the Home, History and drama detail surfaces.
+@Composable
+private fun posterModel(url: String?, widthPx: Int = 540, heightPx: Int = 810): ImageRequest {
+    val context = LocalContext.current
+    return remember(context, url, widthPx, heightPx) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .size(widthPx, heightPx)
+            .precision(Precision.INEXACT)
+            .crossfade(180)
+            .build()
+    }
+}
+
 private val Gold = Color(0xFFFFC857)
 private val Dark = Color(0xFF0C0C10)
 private data class Drama(val title:String, val genre:String, val episodes:Int, val description:String, val url:String? = null, val id:String = "", val posterUrl:String? = null)
@@ -792,7 +809,7 @@ private fun AddisReelApp() {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Box(Modifier.fillMaxWidth().height(330.dp).background(Color(0xFF211A2B))) {
                                             if (featured.posterUrl != null) {
-                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                AsyncImage(model = posterModel(featured.posterUrl, 900, 1080), contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                                 placeholder = ColorPainter(Color(0xFF34243A)),
                                                 error = ColorPainter(Color(0xFF34243A)))
                                             }
@@ -850,7 +867,7 @@ private fun AddisReelApp() {
                                                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                                                                 Box(Modifier.fillMaxWidth().height(106.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF34243A))) {
                                                                     if (drama.posterUrl != null) AsyncImage(
-                                                                        model = drama.posterUrl,
+                                                                        model = posterModel(drama.posterUrl),
                                                                         contentDescription = "Continue watching " + drama.title,
                                                                         contentScale = ContentScale.Crop,
                                                                         modifier = Modifier.fillMaxSize(),
@@ -898,7 +915,7 @@ private fun AddisReelApp() {
                                                             Box(Modifier.fillMaxWidth().height(198.dp).background(Color(0xFF34243A))) {
                                                                 if (drama.posterUrl != null) {
                                                                     AsyncImage(
-                                                                        model = drama.posterUrl,
+                                                                        model = posterModel(drama.posterUrl),
                                                                         contentDescription = "Poster for " + drama.title,
                                                                         contentScale = ContentScale.Crop,
                                                                         modifier = Modifier.fillMaxSize(),
@@ -941,7 +958,7 @@ private fun AddisReelApp() {
                                                         Column {
                                                             Box(Modifier.fillMaxWidth().height(178.dp).background(Color(0xFF34243A))) {
                                                                 if (drama.posterUrl != null) {
-                                                                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                                    AsyncImage(model = posterModel(drama.posterUrl), contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                                                     placeholder = ColorPainter(Color(0xFF34243A)),
                                                                     error = ColorPainter(Color(0xFF34243A)))
                                                                 } else {
@@ -1151,7 +1168,7 @@ private fun AddisReelApp() {
             ) {
                 if (drama.posterUrl != null) {
                     AsyncImage(
-                        model = drama.posterUrl,
+                        model = posterModel(drama.posterUrl),
                         contentDescription = "Poster for " + drama.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.matchParentSize()
