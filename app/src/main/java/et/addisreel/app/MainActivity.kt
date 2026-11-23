@@ -171,6 +171,7 @@ private fun AddisReelApp() {
     var discoverOnlySaved by remember { mutableStateOf(false) }
     var discoverOnlyUnwatched by remember { mutableStateOf(false) }
     var libraryFilter by remember { mutableStateOf("Saved") }
+    var confirmClearHistory by remember { mutableStateOf(false) }
     var libraryCompletionRevision by remember { mutableIntStateOf(0) }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
@@ -283,6 +284,22 @@ private fun AddisReelApp() {
         preferences.edit().putStringSet("saved_titles", updated).apply()
     }
     BackHandler(enabled = cinemaMode && tab == 0) { cinemaMode = false }
+    if (confirmClearHistory) {
+        AlertDialog(
+            onDismissRequest = { confirmClearHistory = false },
+            title = { Text("Clear viewing history?") },
+            text = { Text("This removes the recently watched list on this device. Saved dramas and completed episode records will remain.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewingHistory = emptyList()
+                    recentlyWatched = ""
+                    preferences.edit().remove("viewing_history").remove("recently_watched").apply()
+                    confirmClearHistory = false
+                }) { Text("Clear history") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClearHistory = false }) { Text("Keep history") } }
+        )
+    }
     MaterialTheme(colorScheme = darkColorScheme(primary=Gold, background=Dark, surface=Color(0xFF18181E))) {
         detailDrama?.let { drama ->
             AlertDialog(
@@ -761,13 +778,14 @@ private fun AddisReelApp() {
                                                             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                                                                 Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                                 Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
+                                                                val completedCount = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
                                                                 LinearProgressIndicator(
-                                                                    progress = { (resume - 1).toFloat() / drama.episodes.coerceAtLeast(1) },
+                                                                    progress = { completedCount.coerceIn(0, drama.episodes).toFloat() / drama.episodes.coerceAtLeast(1) },
                                                                     modifier = Modifier.fillMaxWidth().height(3.dp),
                                                                     color = Gold,
                                                                     trackColor = Color(0xFF34343B)
                                                                 )
-                                                                Text("Resume watching", fontSize = 11.sp, color = Color.LightGray)
+                                                                Text("$completedCount / ${drama.episodes} watched · Resume", fontSize = 11.sp, color = Color.LightGray)
                                                             }
                                                         }
                                                     }
@@ -834,9 +852,7 @@ private fun AddisReelApp() {
                         if (libraryFilter == "History" && viewingHistory.isNotEmpty()) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
                                 TextButton(onClick = {
-                                    viewingHistory = emptyList()
-                                    recentlyWatched = ""
-                                    preferences.edit().remove("viewing_history").remove("recently_watched").apply()
+                                    confirmClearHistory = true
                                 }) {
                                     Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(17.dp))
                                     Spacer(Modifier.width(4.dp))
