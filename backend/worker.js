@@ -162,7 +162,7 @@ export default {
         // Only predefined variants are accepted; missing variants fall back to the original.
         const width = new URL(request.url).searchParams.get("w");
         if (width !== null && !["320","640","960"].includes(width)) return fail("Unsupported poster width",400);
-        const variantKey = width ? s.poster_key.replace(/\\.[^.]+$/, "-" + width + ".webp") : null;
+        const variantKey = width ? s.poster_key.replace(/\.[^.]+$/, "-" + width + ".webp") : null;
         const variant = variantKey ? await env.MEDIA.get(variantKey) : null;
         const object = variant || await env.MEDIA.get(s.poster_key);
         if (!object) return fail("Poster unavailable",404);
@@ -334,7 +334,7 @@ export default {
           if (!series?.poster_key) return fail("Upload original poster first",409,false);
           const bytes=await request.arrayBuffer();
           if (!bytes.byteLength || bytes.byteLength > 1024*1024) return fail("Poster variant exceeds 1MB",413,false);
-          const key=series.poster_key.replace(/\\.[^.]+$/, "-" + upVariant[2] + ".webp");
+          const key=series.poster_key.replace(/\.[^.]+$/, "-" + upVariant[2] + ".webp");
           await env.MEDIA.put(key,bytes,{httpMetadata:{contentType:"image/webp"}});
           return reply({uploaded:true,width:Number(upVariant[2]),bytes:bytes.byteLength},200,false);
         }
