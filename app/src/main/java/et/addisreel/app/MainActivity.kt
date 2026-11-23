@@ -1,6 +1,7 @@
 package et.addisreel.app
 
 import android.os.Bundle
+import android.content.Intent
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
@@ -310,6 +311,18 @@ private fun AddisReelApp() {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(drama.genre + "  •  " + drama.episodes + " episodes", color = Gold)
                         Text(drama.description)
+                        TextButton(onClick = {
+                            val message = "Discover ${drama.title} on AddisReel — ${drama.genre}, ${drama.episodes} short episodes."
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, message)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share this drama"))
+                        }) {
+                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Share drama")
+                        }
                         Text(
                             if (drama.id.isBlank()) "Preview title · Streaming begins when licensed content is published." else "Licensed Ethiopian short-drama catalog.",
                             fontSize = 12.sp,
