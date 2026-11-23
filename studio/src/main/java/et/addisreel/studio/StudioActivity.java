@@ -199,10 +199,12 @@ public final class StudioActivity extends Activity {
                     chosenEpisodeNumber=context.optInt("nextEpisodeNumber",0);
                     if(!chosenSeriesId.matches("[a-z0-9][a-z0-9-]{0,63}")||
                        chosenEpisodeNumber<1||chosenEpisodeNumber>10000){
-                        message("Save or select a series in Studio first, then tap Upload MP4");return;
+                        message("In Create & edit, select a series and tap Save & continue. Then tap Upload MP4.");return;
                     }
                     Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);
-                    pick.setType("video/mp4");
+                    // Accept Android providers that label MP4 files as generic videos.
+                    // The selected document is still checked as MP4 before upload.
+                    pick.setType("video/*");
                     pick.addCategory(Intent.CATEGORY_OPENABLE);
                     pick.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|
                         Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
@@ -230,9 +232,22 @@ public final class StudioActivity extends Activity {
                 name=cursor.getString(0);
                 if(!cursor.isNull(1))size=cursor.getLong(1);
             }
-        }catch(Exception error){message("Cannot read selected video");return;}
-        if(name==null||!name.toLowerCase(Locale.ROOT).endsWith(".mp4")||
-            size<1||size>1024L*1024*1024){message("Choose an MP4 file from 1 byte to 1 GB");return;}
+        }catch(Exception ignored){ /* Some Android document providers omit metadata. */ }
+        // Resolve size without reading the entire video on the UI thread.
+        if(size<1){
+            try(android.content.res.AssetFileDescriptor fd=
+                    getContentResolver().openAssetFileDescriptor(uri,"r")){
+                if(fd!=null && fd.getLength()>0)size=fd.getLength();
+            }catch(Exception ignored){}
+        }
+        if(name==null||name.trim().isEmpty())name="episode.mp4";
+        if(!name.toLowerCase(Locale.ROOT).endsWith(".mp4")){
+            String mime=getContentResolver().getType(uri);
+            if("video/mp4".equalsIgnoreCase(mime))name=name+".mp4";
+            else{message("This video is not MP4. Convert it to MP4 first.");return;}
+        }
+        if(size<1){message("Android could not read this video's size. Save the MP4 to local Files and select it again.");return;}
+        if(size>1024L*1024*1024){message("This MP4 exceeds the 1 GB upload limit.");return;}
         final String finalName=name;
         final long finalSize=size;
         EditText editor=new EditText(this);
