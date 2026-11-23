@@ -28,8 +28,7 @@ internal object NextEpisodePreloader {
     private const val READ_CHUNK_BYTES = 8 * 1024
 
     suspend fun warmMp4OnUnmeteredNetwork(context: Context, url: String, cache: SimpleCache): Boolean {
-        if (!url.substringBefore('?').endsWith(".mp4", ignoreCase = true)) return false
-        if (!url.startsWith("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/")) return false
+        if (!PlaybackPolicy.canPrimeMp4(url)) return false
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         if (connectivity.isActiveNetworkMetered) return false
         val network = connectivity.activeNetwork ?: return false
