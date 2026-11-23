@@ -168,6 +168,7 @@ private fun AddisReelApp() {
     var speedMenuExpanded by remember { mutableStateOf(false) }
     var autoNextEnabled by remember { mutableStateOf(preferences.getBoolean("cinema_auto_next", true)) }
     var discoverQuery by remember { mutableStateOf("") }
+    var homeSearchExpanded by remember { mutableStateOf(false) }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
     var discoverOnlySaved by remember { mutableStateOf(false) }
@@ -683,7 +684,18 @@ private fun AddisReelApp() {
                         }
                     }
                     1 -> {
-                        Header("AddisReel")
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text("AddisReel", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                Text("Ethiopian stories, one episode at a time", fontSize = 11.sp, color = Color.LightGray)
+                            }
+                            IconButton(onClick = {
+                                homeSearchExpanded = !homeSearchExpanded
+                                if (!homeSearchExpanded) { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false }
+                            }) {
+                                Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
+                            }
+                        }
                         if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
@@ -709,7 +721,7 @@ private fun AddisReelApp() {
                             else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
-                            OutlinedTextField(
+                            if (homeSearchExpanded) OutlinedTextField(
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -724,7 +736,7 @@ private fun AddisReelApp() {
                                     }
                                 }
                             )
-                            Row(
+                            if (homeSearchExpanded) Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -736,7 +748,7 @@ private fun AddisReelApp() {
                                     )
                                 }
                             }
-                            Row(
+                            if (homeSearchExpanded) Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -751,7 +763,7 @@ private fun AddisReelApp() {
                                     )
                                 }
                             }
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (homeSearchExpanded) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(selected = discoverOnlySaved, onClick = { discoverOnlySaved = !discoverOnlySaved }, label = { Text("Saved only") })
                                 FilterChip(selected = discoverOnlyUnwatched, onClick = { discoverOnlyUnwatched = !discoverOnlyUnwatched }, label = { Text("Not completed") })
                                 if (discoverOnlySaved || discoverOnlyUnwatched) TextButton(onClick = { discoverOnlySaved = false; discoverOnlyUnwatched = false }) { Text("Reset") }
@@ -834,7 +846,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Text("Explore more dramas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
@@ -862,7 +874,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Text("Continue Watching", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -897,7 +909,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                if (discoverQuery.isBlank() && discoverGenre == "All") {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                     item {
                                         Card(
                                             onClick = { detailDrama = catalog.first() },
@@ -917,7 +929,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                item { Text("${filtered.size} dramas" + if (discoverSort == "For You") " · Based on genres you have watched on this device" else "", color = Color.LightGray) }
+                                item { Text((if (homeSearchExpanded) "Search results · " else "All dramas · ") + "${filtered.size} titles" + if (discoverSort == "For You") " · Personalized on this device" else "", color = Color.LightGray) }
                                 if (filtered.isEmpty()) {
                                     item {
                                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
