@@ -139,6 +139,7 @@ private fun AddisReelApp() {
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
     var nextEpisodeUrl by remember { mutableStateOf<String?>(null) }
+    var nextEpisodeFetchedAtMs by remember { mutableLongStateOf(0L) }
     val appScope = rememberCoroutineScope()
     // Prefetch only the next playback URL (not the video bytes) to avoid extra mobile data.
     var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
@@ -217,6 +218,7 @@ private fun AddisReelApp() {
     LaunchedEffect(selected.id, episode, streamRefresh) {
         episodeUrl = null
         nextEpisodeUrl = null
+        nextEpisodeFetchedAtMs = 0L
         streamLoading = selected.id.isNotBlank()
         val seriesId = selected.id
         val currentEpisode = episode
@@ -243,6 +245,7 @@ private fun AddisReelApp() {
                 prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
                 prefetchedAtMs = if (nextUrl != null) android.os.SystemClock.elapsedRealtime() else 0L
                 nextEpisodeUrl = nextUrl
+                nextEpisodeFetchedAtMs = prefetchedAtMs
             }
         }
     }
@@ -262,6 +265,7 @@ private fun AddisReelApp() {
                 // Ignore slow responses after the viewer changes episodes or series.
                 if (refreshed != null && selected.id == seriesId && episode == currentEpisode) {
                     nextEpisodeUrl = refreshed
+                    nextEpisodeFetchedAtMs = android.os.SystemClock.elapsedRealtime()
                     prefetchedEpisode = Triple(seriesId, currentEpisode + 1, refreshed)
                     prefetchedAtMs = android.os.SystemClock.elapsedRealtime()
                 }
@@ -435,7 +439,7 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, hasNextEpisode = episode < selected.episodes, autoPlayNext = autoNextEnabled, onAutoNextToggle = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, nextEpisodeFetchedAtMs = nextEpisodeFetchedAtMs, hasNextEpisode = episode < selected.episodes, autoPlayNext = autoNextEnabled, onAutoNextToggle = {
                                     autoNextEnabled = !autoNextEnabled
                                     preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
                                 }, onPlaybackUrlExpired = { status ->
@@ -966,7 +970,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPlaybackUrlExpired: (Int) -> Unit, onPrepareNext: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, nextEpisodeFetchedAtMs: Long, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPlaybackUrlExpired: (Int) -> Unit, onPrepareNext: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -1130,7 +1134,7 @@ private fun AddisReelApp() {
             }
         }
     }
-    LaunchedEffect(player, nextEpisodeUrl, isOnline, isMetered, inForeground) {
+    LaunchedEffect(player, nextEpisodeUrl, nextEpisodeFetchedAtMs, isOnline, isMetered, inForeground) {
         val upcoming = nextEpisodeUrl
         if (upcoming != null && hasNextEpisode && isOnline && !isMetered && inForeground) {
             while (true) {
@@ -1138,7 +1142,10 @@ private fun AddisReelApp() {
                 val duration = player.duration
                 val remaining = duration - player.currentPosition
                 if (player.isPlaying && duration > 0L && remaining in 1L..25_000L) {
-                    NextEpisodePreloader.warmMp4OnUnmeteredNetwork(context, upcoming, StreamCache.get(context))
+                    // Do not spend bandwidth warming a link that may have expired.
+                    if (PlaybackPolicy.freshPlaybackLink(android.os.SystemClock.elapsedRealtime(), nextEpisodeFetchedAtMs, 45_000L)) {
+                        NextEpisodePreloader.warmMp4OnUnmeteredNetwork(context, upcoming, StreamCache.get(context))
+                    }
                     break
                 }
             }
@@ -1203,7 +1210,9 @@ private fun AddisReelApp() {
             override fun onPlayerError(error: PlaybackException) {
                 // Expired signed MP4/HLS URLs cannot be fixed by repeatedly
                 // retrying the same URL: fetch a fresh link once instead.
-                val httpStatus = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
+                val httpStatus = generateSequence(error as Throwable?) { it.cause }
+                    .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+                    .firstOrNull()?.responseCode
                 if (httpStatus == 401 || httpStatus == 403) currentOnPlaybackUrlExpired(httpStatus)
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
                 if (failurePositionMs > 0L) {
