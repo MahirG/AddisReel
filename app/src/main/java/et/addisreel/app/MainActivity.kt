@@ -169,6 +169,7 @@ private fun AddisReelApp() {
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
     var libraryFilter by remember { mutableStateOf("Saved") }
+    var libraryCompletionRevision by remember { mutableIntStateOf(0) }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
     // Keep a small, ordered local viewing history without requiring an account.
@@ -452,6 +453,7 @@ private fun AddisReelApp() {
                                     val key = "watched_" + selected.title
                                     val updated = preferences.getStringSet(key, emptySet())?.toSet().orEmpty() + episode.toString()
                                     preferences.edit().putStringSet(key, updated).apply()
+                                    libraryCompletionRevision += 1
                                 }, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
@@ -849,9 +851,13 @@ private fun AddisReelApp() {
                                 }
                             }
                         }
+                        // Recompose when a completed episode is persisted.
+                        val completionRevision = libraryCompletionRevision
                         val libraryTitles = when (libraryFilter) {
                             "History" -> viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
                             "Completed" -> catalog.filter { drama ->
+                                // Read the revision so completion updates invalidate this view.
+                                @Suppress("UNUSED_VARIABLE") val revision = completionRevision
                                 val completed = preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty()
                                 drama.episodes > 0 && (1..drama.episodes).all { it.toString() in completed }
                             }
