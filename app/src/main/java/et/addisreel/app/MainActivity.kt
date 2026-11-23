@@ -83,7 +83,6 @@ private object StreamCache {
 }
 // Decode posters close to their display resolution rather than allocating full-resolution bitmaps.
 // Coil reuses its memory/disk caches across the Home, History and drama detail surfaces.
-@Composable
 private fun posterVariant(url: String?, widthPx: Int): String? {
     if (url == null) return null
     val variantWidth = when {
@@ -94,6 +93,7 @@ private fun posterVariant(url: String?, widthPx: Int): String? {
     return if (url.startsWith(CATALOG_API + "/v1/posters/")) "$url?w=$variantWidth" else url
 }
 
+@Composable
 private fun posterModel(url: String?, widthPx: Int = 540, heightPx: Int = 810): ImageRequest {
     val context = LocalContext.current
     return remember(context, url, widthPx, heightPx) {
