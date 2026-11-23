@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
@@ -117,7 +118,10 @@ private fun fetchPublishedCatalog(): List<Drama> {
 }
 private fun fetchEpisodeStream(id: String, episode: Int): String? {
     val url = catalogResponse("/v1/play/" + id + "/" + episode).optString("playbackUrl")
-    return url.takeIf { it.startsWith(CATALOG_API + "/v1/media/") && it.endsWith(".m3u8") }
+    return url.takeIf {
+        it.startsWith(CATALOG_API + "/v1/media/") &&
+            (it.endsWith(".m3u8") || it.endsWith(".mp4"))
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -149,6 +153,13 @@ private fun AddisReelApp() {
     var fillVideo by remember {
         mutableStateOf(preferences.getBoolean("cinema_fill_video", false))
     }
+    var subtitlesEnabled by remember {
+        mutableStateOf(preferences.getBoolean("cinema_subtitles", true))
+    }
+    var videoQuality by remember {
+        mutableStateOf(preferences.getString("cinema_quality", "Auto") ?: "Auto")
+    }
+    var qualityMenuExpanded by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -343,9 +354,22 @@ private fun AddisReelApp() {
             }
         }
         Scaffold(containerColor=Dark, bottomBar={
-            if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF141419)) {
+            if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF101014), tonalElevation=0.dp) {
                 listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
-                    NavigationBarItem(selected=tab==index,onClick={tab=index},icon={Icon(icon,contentDescription=name)},label={Text(name)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Gold,selectedTextColor=Gold,indicatorColor=Color(0xFF333027)))
+                    NavigationBarItem(
+                        selected=tab==index,
+                        onClick={tab=index},
+                        icon={Icon(icon,contentDescription=name)},
+                        label={Text(name, fontSize=11.sp, fontWeight=if(tab==index) FontWeight.SemiBold else FontWeight.Normal)},
+                        alwaysShowLabel=false,
+                        colors=NavigationBarItemDefaults.colors(
+                            selectedIconColor=Dark,
+                            selectedTextColor=Gold,
+                            unselectedIconColor=Color(0xFF96949E),
+                            unselectedTextColor=Color(0xFF96949E),
+                            indicatorColor=Gold
+                        )
+                    )
                 }
             }
         }) { padding ->
@@ -377,7 +401,7 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -460,6 +484,30 @@ private fun AddisReelApp() {
                                         Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = Gold)
                                     }
                                     IconButton(onClick = {
+                                        subtitlesEnabled = !subtitlesEnabled
+                                        preferences.edit().putBoolean("cinema_subtitles", subtitlesEnabled).apply()
+                                    }) {
+                                        Icon(
+                                            Icons.Default.ClosedCaption,
+                                            contentDescription = if (subtitlesEnabled) "Turn subtitles off" else "Turn subtitles on",
+                                            tint = if (subtitlesEnabled) Gold else Color.Gray
+                                        )
+                                    }
+                                    Box {
+                                        TextButton(onClick = { qualityMenuExpanded = true }) {
+                                            Text(videoQuality, color = Gold, fontSize = 12.sp)
+                                        }
+                                        DropdownMenu(expanded = qualityMenuExpanded, onDismissRequest = { qualityMenuExpanded = false }) {
+                                            listOf("Auto", "Data saver", "High").forEach { mode ->
+                                                DropdownMenuItem(text = { Text(mode) }, onClick = {
+                                                    videoQuality = mode
+                                                    preferences.edit().putString("cinema_quality", mode).apply()
+                                                    qualityMenuExpanded = false
+                                                })
+                                            }
+                                        }
+                                    }
+                                    IconButton(onClick = {
                                         fillVideo = !fillVideo
                                         preferences.edit().putBoolean("cinema_fill_video", fillVideo).apply()
                                     }) {
@@ -505,7 +553,7 @@ private fun AddisReelApp() {
                     1 -> {
                         Header("Discover")
                         if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
-                        val genres = remember { listOf("All") + catalog.map { it.genre }.distinct() }
+                        val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (discoverGenre == "All" || drama.genre == discoverGenre) &&
                                 (discoverQuery.isBlank() ||
@@ -519,6 +567,22 @@ private fun AddisReelApp() {
                             else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
+                            if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
+                                ElevatedCard(
+                                    onClick = { selectDrama(featured); tab = 0 },
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
+                                ) {
+                                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("FEATURED ON ADDISREEL", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
+                                        Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text("▶  Start watching", color = Gold, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                            }
                             OutlinedTextField(
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
@@ -810,7 +874,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -879,15 +943,22 @@ private fun AddisReelApp() {
             prepare()
         }
     }
-    // React to Wi-Fi/mobile handover without replacing the player or losing
-    // the current position. Unmetered connections regain unrestricted ABR.
-    LaunchedEffect(player, isMetered) {
+    LaunchedEffect(player, subtitlesEnabled) {
         val selector = player.trackSelector as? DefaultTrackSelector
         selector?.setParameters(
-            selector.buildUponParameters().setMaxVideoBitrate(
-                if (isMetered) 1_500_000 else Int.MAX_VALUE
-            )
+            selector.buildUponParameters().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !subtitlesEnabled)
         )
+    }
+    // React to Wi-Fi/mobile handover without replacing the player or losing
+    // the current position. Unmetered connections regain unrestricted ABR.
+    LaunchedEffect(player, isMetered, quality) {
+        val selector = player.trackSelector as? DefaultTrackSelector
+        val bitrateLimit = when (quality) {
+            "Data saver" -> 650_000
+            "High" -> Int.MAX_VALUE
+            else -> if (isMetered) 1_500_000 else Int.MAX_VALUE
+        }
+        selector?.setParameters(selector.buildUponParameters().setMaxVideoBitrate(bitrateLimit))
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     // Avoid flashing a loading spinner for brief, normal buffer transitions.

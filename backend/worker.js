@@ -138,9 +138,13 @@ export default {
       if (request.method === "GET" && play) {
         const e = await playableEpisode(env,play[1],Number(play[2]));
         if (!e) return fail("Episode unavailable",404);
+        const base = url.origin + "/v1/media/" + e.series_id + "/" + e.number + "/";
+        const hls = await env.MEDIA.head(e.media_prefix + "/master.m3u8");
+        const mp4 = hls ? null : await env.MEDIA.head(e.media_prefix + "/source.mp4");
+        if (!hls && !mp4) return fail("Episode media is not ready",404);
         return reply({seriesId:e.series_id,episode:e.number,title:e.title,
-          playbackUrl:url.origin + "/v1/media/" + e.series_id + "/" + e.number + "/master.m3u8",
-          format:"hls"});
+          playbackUrl:base + (hls ? "master.m3u8" : "source.mp4"),
+          format:hls ? "hls" : "mp4"});
       }
       const media = /^\/v1\/media\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
       if (request.method === "GET" && media) {
@@ -160,9 +164,74 @@ export default {
         return new Response(object.body,{headers:{...publicHeaders,"Content-Type":object.httpMetadata?.contentType || "image/jpeg",
           "Cache-Control":"public, max-age=86400","X-Content-Type-Options":"nosniff"}});
       }
+      // Separate machine-to-machine access. Never accept an owner browser cookie here.
+      if (path.startsWith("/v1/processor/")) {
+        const secret = env.PROCESSOR_TOKEN;
+        const bearer = request.headers.get("Authorization") || "";
+        if (typeof secret !== "string" || secret.length < 32 ||
+            bearer !== "Bearer " + secret) return fail("Unauthorized processor",401,false);
+        if (request.method === "POST" && path === "/v1/processor/claim") {
+          // Atomic D1 update prevents two processors from claiming the same job.
+          const claimed = await env.DB.prepare(
+            "UPDATE video_processing_jobs SET status='processing',progress=0,updated_at=datetime('now') " +
+            "WHERE id=(SELECT id FROM video_processing_jobs WHERE status='queued' ORDER BY created_at,id LIMIT 1) " +
+            "AND status='queued' RETURNING id,series_id,episode_number,source_key,status,progress"
+          ).first();
+          return reply({job:claimed || null},200,false);
+        }
+        const update = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})$/.exec(path);
+        if (request.method === "PATCH" && update) {
+          const d = await inputJSON(request);
+          if (!["processing","ready","failed"].includes(d.status) ||
+              !Number.isInteger(d.progress) || d.progress<0 || d.progress>100 ||
+              (d.status==="ready" && d.progress!==100) ||
+              (d.status==="failed" && (typeof d.error !== "string" || d.error.length>300)))
+            return fail("Invalid job state",400,false);
+          if (d.status === "ready") {
+            const job = await env.DB.prepare(
+              "SELECT source_key FROM video_processing_jobs WHERE id=? AND status='processing'"
+            ).bind(update[1]).first();
+            if (!job) return fail("Job is not processing",409,false);
+            const prefix = job.source_key.slice(0,-"/source.mp4".length);
+            if (!await env.MEDIA.head(prefix + "/master.m3u8"))
+              return fail("Cannot mark ready without HLS master playlist",409,false);
+          }
+          const changed = await env.DB.prepare(
+            "UPDATE video_processing_jobs SET status=?,progress=?,error_message=?,updated_at=datetime('now') " +
+            "WHERE id=? AND status='processing'"
+          ).bind(d.status,d.progress,d.status==="failed"?d.error:null,update[1]).run();
+          if (!changed.meta?.changes) return fail("Job is not processing",409,false);
+          return reply({updated:true},200,false);
+        }
+        return fail("Processor route not found",404,false);
+      }
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        if (request.method === "GET" && path === "/v1/admin/processing-jobs") {
+          const rows = await env.DB.prepare(
+            "SELECT id,series_id,episode_number,status,progress,error_message,created_at,updated_at " +
+            "FROM video_processing_jobs ORDER BY created_at DESC LIMIT 100"
+          ).all();
+          return reply({jobs:rows.results},200,false);
+        }
+        if (request.method === "POST" && path === "/v1/admin/processing-jobs") {
+          const d = await inputJSON(request);
+          if (!idOK(d.seriesId) || !Number.isInteger(d.episode) || d.episode < 1)
+            return fail("Invalid episode",400,false);
+          const e = await env.DB.prepare(
+            "SELECT media_prefix,status FROM episodes WHERE series_id=? AND number=?"
+          ).bind(d.seriesId,d.episode).first();
+          if (!e || e.status !== "draft") return fail("Create a draft episode first",409,false);
+          const source = e.media_prefix + "/source.mp4";
+          if (!await env.MEDIA.head(source)) return fail("Upload source.mp4 first",409,false);
+          const jobId = crypto.randomUUID();
+          await env.DB.prepare(
+            "INSERT INTO video_processing_jobs(id,series_id,episode_number,source_key,status) " +
+            "VALUES(?,?,?,?,'queued')"
+          ).bind(jobId,d.seriesId,d.episode,source).run();
+          return reply({jobId,status:"queued",message:"Job registered; external processor not connected"},202,false);
+        }
         if (request.method === "GET" && path === "/v1/admin/series") {
           const s=await env.DB.prepare("SELECT * FROM series ORDER BY sort_order,created_at DESC").all();
           const e=await env.DB.prepare("SELECT * FROM episodes ORDER BY series_id,number").all();
@@ -190,9 +259,39 @@ export default {
           const parent=await env.DB.prepare("SELECT id FROM series WHERE id=?").bind(d.seriesId).first();
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
-          if (d.status === "published" && d.licensed === true &&
-              !await env.MEDIA.head(prefix + "/master.m3u8"))
-            return fail("Upload master.m3u8 before publishing this episode",409,false);
+          if (d.status === "published" && d.licensed === true) {
+            const manifest = await env.MEDIA.get(prefix + "/master.m3u8");
+            const mp4 = manifest ? null : await env.MEDIA.head(prefix + "/source.mp4");
+            if (!manifest && !mp4)
+              return fail("Upload master.m3u8 or source.mp4 before publishing this episode",409,false);
+            if (manifest) {
+              // Do not publish partial HLS uploads: check each referenced child
+              // playlist and its local segment files exist in R2.
+              const master = await manifest.text();
+              const playlists = master.split(/\\r?\\n/).map(v=>v.trim())
+                .filter(v=>v && !v.startsWith("#"));
+              if (!playlists.length || playlists.length > 8)
+                return fail("Invalid HLS master playlist",409,false);
+              for (const playlist of playlists) {
+                if (!fileOK(playlist) || !playlist.endsWith(".m3u8"))
+                  return fail("Invalid HLS rendition playlist",409,false);
+                const child = await env.MEDIA.get(prefix + "/" + playlist);
+                if (!child) return fail("Missing HLS rendition: " + playlist,409,false);
+                const segments = (await child.text()).split(/\\r?\\n/)
+                  .map(v=>v.trim()).filter(v=>v && !v.startsWith("#"));
+                if (!segments.length || segments.length > 20000)
+                  return fail("Invalid HLS segments list",409,false);
+                const base = playlist.includes("/") ? playlist.slice(0,playlist.lastIndexOf("/")+1) : "";
+                // Check the first and final segment at minimum; a background
+                // integrity scan is still required for full verification.
+                for (const segment of [segments[0], segments[segments.length-1]]) {
+                  const key = base + segment;
+                  if (!fileOK(key) || !await env.MEDIA.head(prefix + "/" + key))
+                    return fail("Missing HLS media segment",409,false);
+                }
+              }
+            }
+          }
           await env.DB.prepare(
             "INSERT INTO episodes(series_id,number,title,media_prefix,duration_seconds,status,licensed) VALUES(?,?,?,?,?,?,?) " +
             "ON CONFLICT(series_id,number) DO UPDATE SET title=excluded.title,media_prefix=excluded.media_prefix," +
