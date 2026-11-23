@@ -159,10 +159,20 @@ export default {
         const s=await env.DB.prepare("SELECT poster_key FROM series WHERE id=? AND status='published' AND licensed=1")
           .bind(poster[1]).first();
         if (!s || !s.poster_key) return fail("Poster unavailable",404);
-        const object=await env.MEDIA.get(s.poster_key);
+        // Only predefined variants are accepted; missing variants fall back to the original.
+        const width = new URL(request.url).searchParams.get("w");
+        if (width !== null && !["320","640","960"].includes(width)) return fail("Unsupported poster width",400);
+        const variantKey = width ? s.poster_key.replace(/\\.[^.]+$/, "-" + width + ".webp") : null;
+        const variant = variantKey ? await env.MEDIA.get(variantKey) : null;
+        const object = variant || await env.MEDIA.get(s.poster_key);
         if (!object) return fail("Poster unavailable",404);
-        return new Response(object.body,{headers:{...publicHeaders,"Content-Type":object.httpMetadata?.contentType || "image/jpeg",
-          "Cache-Control":"public, max-age=86400","X-Content-Type-Options":"nosniff"}});
+        const etag = object.httpEtag;
+        const headers = new Headers({...publicHeaders,
+          "Content-Type": variant ? "image/webp" : (object.httpMetadata?.contentType || "image/jpeg"),
+          "Cache-Control":"public, max-age=3600, stale-while-revalidate=86400",
+          "ETag":etag, "X-Poster-Variant":variant ? "webp-" + width : "original"});
+        if (request.headers.get("If-None-Match") === etag) return new Response(null,{status:304,headers});
+        return new Response(object.body,{headers});
       }
       // Separate machine-to-machine access. Never accept an owner browser cookie here.
       if (path.startsWith("/v1/processor/")) {
@@ -308,10 +318,25 @@ export default {
           if (!types[mime]) return fail("Unsupported poster type",415,false);
           const bytes=await request.arrayBuffer();
           if (!bytes.byteLength || bytes.byteLength > 5*1024*1024) return fail("Poster must be 1-5MB",413,false);
-          const key="posters/" + upPoster[1] + types[mime];
+          // A unique original key ensures old optimized variants cannot be reused
+        // after a new poster upload; clients can still request the original URL.
+        const key="posters/" + upPoster[1] + "-" + crypto.randomUUID() + types[mime];
           await env.MEDIA.put(key,bytes,{httpMetadata:{contentType:mime}});
           await env.DB.prepare("UPDATE series SET poster_key=?,updated_at=datetime('now') WHERE id=?").bind(key,upPoster[1]).run();
           return reply({uploaded:true,key},200,false);
+        }
+        // Variants share the current original poster key, preventing stale variants
+        // after a replacement upload. Each is validated before storage.
+        const upVariant=/^\/v1\/admin\/posters\/([a-z0-9-]+)\/variants\/(320|640|960)$/.exec(path);
+        if (request.method === "PUT" && upVariant) {
+          if (request.headers.get("Content-Type")?.split(";")[0] !== "image/webp") return fail("WebP required",415,false);
+          const series=await env.DB.prepare("SELECT poster_key FROM series WHERE id=?").bind(upVariant[1]).first();
+          if (!series?.poster_key) return fail("Upload original poster first",409,false);
+          const bytes=await request.arrayBuffer();
+          if (!bytes.byteLength || bytes.byteLength > 1024*1024) return fail("Poster variant exceeds 1MB",413,false);
+          const key=series.poster_key.replace(/\\.[^.]+$/, "-" + upVariant[2] + ".webp");
+          await env.MEDIA.put(key,bytes,{httpMetadata:{contentType:"image/webp"}});
+          return reply({uploaded:true,width:Number(upVariant[2]),bytes:bytes.byteLength},200,false);
         }
         const upHls=/^\/v1\/admin\/hls\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
         if (request.method === "PUT" && upHls) {
