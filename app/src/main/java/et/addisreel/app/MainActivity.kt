@@ -160,6 +160,8 @@ private fun AddisReelApp() {
         mutableStateOf(preferences.getString("cinema_quality", "Auto") ?: "Auto")
     }
     var qualityMenuExpanded by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableStateOf(preferences.getFloat("cinema_playback_speed", 1f).coerceIn(0.75f, 1.5f)) }
+    var speedMenuExpanded by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -401,7 +403,7 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -503,6 +505,20 @@ private fun AddisReelApp() {
                                                     videoQuality = mode
                                                     preferences.edit().putString("cinema_quality", mode).apply()
                                                     qualityMenuExpanded = false
+                                                })
+                                            }
+                                        }
+                                    }
+                                    Box {
+                                        TextButton(onClick = { speedMenuExpanded = true }) {
+                                            Text("${playbackSpeed}×", color = Gold, fontSize = 12.sp)
+                                        }
+                                        DropdownMenu(expanded = speedMenuExpanded, onDismissRequest = { speedMenuExpanded = false }) {
+                                            listOf(0.75f, 1f, 1.25f, 1.5f).forEach { speed ->
+                                                DropdownMenuItem(text = { Text("${speed}×") }, onClick = {
+                                                    playbackSpeed = speed
+                                                    preferences.edit().putFloat("cinema_playback_speed", speed).apply()
+                                                    speedMenuExpanded = false
                                                 })
                                             }
                                         }
@@ -874,7 +890,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -942,6 +958,9 @@ private fun AddisReelApp() {
             playWhenReady = true
             prepare()
         }
+    }
+    LaunchedEffect(player, playbackSpeed) {
+        player.setPlaybackSpeed(playbackSpeed)
     }
     LaunchedEffect(player, subtitlesEnabled) {
         val selector = player.trackSelector as? DefaultTrackSelector
