@@ -1371,9 +1371,9 @@ private fun AddisReelApp() {
         // playlist must offer multiple renditions for quality switching to work.
         val metered = connectivity.isActiveNetworkMetered
         val trackSelector = DefaultTrackSelector(context).apply {
-            if (metered) {
-                setParameters(buildUponParameters().setMaxVideoBitrate(1_500_000))
-            }
+            setParameters(buildUponParameters().setMaxVideoBitrate(
+                PlaybackPolicy.maxVideoBitrate("Auto", metered)
+            ))
         }
         // Keep enough video buffered for variable mobile networks without excessive data use.
         val loadControl = DefaultLoadControl.Builder()
@@ -1388,7 +1388,12 @@ private fun AddisReelApp() {
         // LRU eviction caps storage at 80 MiB; no whole-episode predownloads.
         val cacheFactory = CacheDataSource.Factory()
             .setCache(StreamCache.get(context))
-            .setUpstreamDataSourceFactory(DefaultHttpDataSource.Factory())
+            .setUpstreamDataSourceFactory(
+                DefaultHttpDataSource.Factory()
+                    .setConnectTimeoutMs(8_000)
+                    .setReadTimeoutMs(15_000)
+                    .setUserAgent("AddisReel-Android/1.0")
+            )
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(cacheFactory))
@@ -1416,11 +1421,7 @@ private fun AddisReelApp() {
     // the current position. Unmetered connections regain unrestricted ABR.
     LaunchedEffect(player, isMetered, quality) {
         val selector = player.trackSelector as? DefaultTrackSelector
-        val bitrateLimit = when (quality) {
-            "Data saver" -> 650_000
-            "High" -> Int.MAX_VALUE
-            else -> if (isMetered) 1_500_000 else Int.MAX_VALUE
-        }
+        val bitrateLimit = PlaybackPolicy.maxVideoBitrate(quality, isMetered)
         selector?.setParameters(selector.buildUponParameters().setMaxVideoBitrate(bitrateLimit))
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }

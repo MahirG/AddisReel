@@ -6,6 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PlaybackPolicyTest {
+    @Test fun bitrateSelectionHonorsDataSaverAndMeteredNetwork() {
+        assertEquals(650_000, PlaybackPolicy.maxVideoBitrate("Data saver", true))
+        assertEquals(650_000, PlaybackPolicy.maxVideoBitrate("Data saver", false))
+        assertEquals(1_500_000, PlaybackPolicy.maxVideoBitrate("Auto", true))
+        assertEquals(Int.MAX_VALUE, PlaybackPolicy.maxVideoBitrate("Auto", false))
+        assertEquals(Int.MAX_VALUE, PlaybackPolicy.maxVideoBitrate("High", true))
+    }
+
     @Test fun prebufferOnlyTrustedMp4Media() {
         assertTrue(PlaybackPolicy.canPrimeMp4("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/1/source.mp4"))
         assertTrue(PlaybackPolicy.canPrimeMp4("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/1/source.mp4?token=short"))

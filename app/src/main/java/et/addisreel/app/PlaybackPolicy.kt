@@ -20,6 +20,13 @@ internal object PlaybackPolicy {
         fetchedAtMs >= 0L && nowMs >= fetchedAtMs &&
             nowMs - fetchedAtMs <= maxAgeMs
 
+    /** Honor explicit video quality while protecting metered mobile data. */
+    fun maxVideoBitrate(quality: String, metered: Boolean): Int = when (quality) {
+        "Data saver" -> 650_000
+        "High" -> Int.MAX_VALUE
+        else -> if (metered) 1_500_000 else Int.MAX_VALUE
+    }
+
     fun completedPercent(watchedCount: Int, episodeCount: Int): Int =
         if (episodeCount <= 0) 0
         else ((watchedCount.coerceIn(0, episodeCount).toLong() * 100L) / episodeCount).toInt()

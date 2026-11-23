@@ -1,0 +1,30 @@
+name: AddisReel FFmpeg video processor
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: addisreel-video-transcoding
+  cancel-in-progress: false
+
+jobs:
+  process-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify isolated processor credentials
+        env:
+          PROCESSOR_TOKEN: ${{ secrets.ADDISREEL_PROCESSOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "${#PROCESSOR_TOKEN}" -ge 32 || { echo "::error::Configure ADDISREEL_PROCESSOR_TOKEN in repository secrets"; exit 1; }
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
+      - name: Process one queued licensed MP4 and verify HLS output
+        env:
+          PROCESSOR_TOKEN: ${{ secrets.ADDISREEL_PROCESSOR_TOKEN }}
+          ADDISREEL_CATALOG_URL: https://addisreel-catalog.eddieaman475.workers.dev
+        run: python3 backend/tools/processor_runner.py

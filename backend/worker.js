@@ -74,6 +74,8 @@ async function serveR2(env, key, path, request) {
   headers.set("Cache-Control", path.endsWith(".m3u8") ? "public, max-age=30" : "public, max-age=120");
   headers.set("Accept-Ranges","bytes");
   headers.set("ETag",object.httpEtag);
+  if (!range && request.headers.get("If-None-Match") === object.httpEtag)
+    return new Response(null,{status:304,headers});
   if (object.range && range) {
     const offset = object.range.offset || 0;
     const len = object.range.length || object.size;
@@ -82,13 +84,39 @@ async function serveR2(env, key, path, request) {
   }
   return new Response(object.body,{headers});
 }
+// Verify the complete adaptive HLS graph before exposing a processed episode.
+async function verifyHlsPackage(env, prefix) {
+  const manifest = await env.MEDIA.get(prefix + "/master.m3u8");
+  if (!manifest) return "HLS master playlist missing";
+  if (manifest.size > 1024 * 1024) return "HLS master playlist too large";
+  const master = await manifest.text();
+  if (!master.startsWith("#EXTM3U")) return "Invalid HLS master header";
+  const children = master.split(/\r?\n/).map(v => v.trim()).filter(v => v && !v.startsWith("#"));
+  if (!children.length || children.length > 8) return "Invalid HLS rendition count";
+  for (const path of children) {
+    if (!fileOK(path) || !path.endsWith(".m3u8")) return "Unsafe HLS rendition path";
+    const playlist = await env.MEDIA.get(prefix + "/" + path);
+    if (!playlist || playlist.size > 1024 * 1024) return "HLS rendition missing or too large";
+    const text = await playlist.text();
+    if (!text.startsWith("#EXTM3U") || !text.includes("#EXT-X-ENDLIST")) return "Incomplete HLS rendition";
+    const segments = text.split(/\r?\n/).map(v => v.trim()).filter(v => v && !v.startsWith("#"));
+    if (!segments.length || segments.length > 20000) return "Invalid HLS segment count";
+    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    for (const segment of segments) {
+      const local = folder + segment;
+      if (!fileOK(segment) || !fileOK(local) || local.endsWith(".m3u8")) return "Unsafe HLS segment path";
+      if (!(await env.MEDIA.head(prefix + "/" + local))) return "Missing HLS segment";
+    }
+  }
+  return null;
+}
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:3});
+        return reply({status:"ok",service:"addisreel-catalog",phase:4,features:["multipart-mp4","processor-hls","studio-ops"]});
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
         return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
@@ -153,11 +181,20 @@ export default {
           format:hls ? "hls" : "mp4"});
       }
       const media = /^\/v1\/media\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
-      if (request.method === "GET" && media) {
+      if ((request.method === "GET" || request.method === "HEAD") && media) {
         const e=await playableEpisode(env,media[1],Number(media[2]));
         let file;
         try { file=decodeURIComponent(media[3]); } catch { return fail("Invalid media filename"); }
         if (!e || !fileOK(file)) return fail("Media unavailable",404);
+        if (request.method === "HEAD") {
+          const object = await env.MEDIA.head(e.media_prefix + "/" + file);
+          if (!object) return fail("Media unavailable",404);
+          return new Response(null,{headers:{
+            ...publicHeaders,"Content-Type":extType(file),"Content-Length":String(object.size),
+            "Cache-Control":file.endsWith(".m3u8") ? "public, max-age=30" : "public, max-age=120",
+            "Accept-Ranges":"bytes","ETag":object.httpEtag
+          }});
+        }
         return serveR2(env,e.media_prefix + "/" + file,file,request);
       }
       const poster = /^\/v1\/posters\/([a-z0-9-]+)$/.exec(path);
@@ -223,6 +260,47 @@ export default {
           ).first();
           return reply({job:claimed || null},200,false);
         }
+        // Workers cannot execute FFmpeg; the external runner downloads and
+        // uploads through short, authenticated, same-worker streams.
+        const source = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})\/source$/.exec(path);
+        if (request.method === "GET" && source) {
+          const job = await env.DB.prepare(
+            "SELECT source_key FROM video_processing_jobs WHERE id=? AND status='processing'"
+          ).bind(source[1]).first();
+          if (!job) return fail("Job is not processing",409,false);
+          const object = await env.MEDIA.get(job.source_key);
+          if (!object) return fail("Source MP4 missing",404,false);
+          return new Response(object.body,{headers:{
+            "Content-Type":"video/mp4","Content-Length":String(object.size),
+            "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"
+          }});
+        }
+        const output = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})\/files\/(.+)$/.exec(path);
+        if (request.method === "PUT" && output) {
+          let file;
+          try { file = decodeURIComponent(output[2]); }
+          catch { return fail("Invalid output path",400,false); }
+          if (!fileOK(file) || file === "source.mp4")
+            return fail("Invalid processed HLS path",400,false);
+          const expected = request.headers.get("X-Upload-SHA256");
+          if (!uploadSha256(expected)) return fail("SHA-256 required",400,false);
+          const job = await env.DB.prepare(
+            "SELECT source_key FROM video_processing_jobs WHERE id=? AND status='processing'"
+          ).bind(output[1]).first();
+          if (!job) return fail("Job is not processing",409,false);
+          if (Number(request.headers.get("Content-Length") || 0) > 16*1024*1024)
+            return fail("HLS file too large",413,false);
+          const bytes = await request.arrayBuffer();
+          if (!bytes.byteLength || bytes.byteLength > 16*1024*1024)
+            return fail("HLS file must be 1-16MB",413,false);
+          if ((await digestUpload(bytes)) !== expected)
+            return fail("Upload checksum mismatch",422,false);
+          const prefix = job.source_key.slice(0,-"/source.mp4".length);
+          await env.MEDIA.put(prefix + "/" + file, bytes, {
+            httpMetadata:{contentType:extType(file)},customMetadata:{sha256:expected}
+          });
+          return reply({uploaded:true,bytes:bytes.byteLength,sha256:expected},200,false);
+        }
         const update = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})$/.exec(path);
         if (request.method === "PATCH" && update) {
           const d = await inputJSON(request);
@@ -237,8 +315,8 @@ export default {
             ).bind(update[1]).first();
             if (!job) return fail("Job is not processing",409,false);
             const prefix = job.source_key.slice(0,-"/source.mp4".length);
-            if (!await env.MEDIA.head(prefix + "/master.m3u8"))
-              return fail("Cannot mark ready without HLS master playlist",409,false);
+            const invalid = await verifyHlsPackage(env,prefix);
+            if (invalid) return fail("Cannot mark ready: " + invalid,409,false);
           }
           const changed = await env.DB.prepare(
             "UPDATE video_processing_jobs SET status=?,progress=?,error_message=?,updated_at=datetime('now') " +
@@ -252,6 +330,82 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        // R2 multipart is for draft MP4 sources only. Each authenticated request
+        // transports at most 8 MiB, respecting the Worker request-size limit.
+        const multipart = /^\/v1\/admin\/multipart\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
+        if (multipart) {
+          const episode = await env.DB.prepare(
+            "SELECT media_prefix,status FROM episodes WHERE series_id=? AND number=?"
+          ).bind(multipart[1],Number(multipart[2])).first();
+          if (!episode || episode.status !== "draft" || !episode.media_prefix)
+            return fail("Create a draft episode before multipart upload",409,false);
+          const key = episode.media_prefix + "/source.mp4";
+          const action = url.searchParams.get("action");
+          const uploadId = url.searchParams.get("uploadId");
+          const maxSize = 512*1024*1024, partSize = 8*1024*1024;
+          if (request.method === "POST" && action === "create") {
+            const d = await inputJSON(request);
+            if (!Number.isSafeInteger(d.size) || d.size<=16*1024*1024 || d.size>maxSize)
+              return fail("MP4 must be larger than 16 MB and at most 512 MB",413,false);
+            const session = await env.MEDIA.createMultipartUpload(key, {
+              httpMetadata:{contentType:"video/mp4"}
+            });
+            return reply({uploadId:session.uploadId,partSize,parts:Math.ceil(d.size/partSize)},201,false);
+          }
+          if (!uploadId || uploadId.length<8 || uploadId.length>200 ||
+              !/^[A-Za-z0-9_=-]+$/.test(uploadId))
+            return fail("Invalid multipart upload ID",400,false);
+          const session = env.MEDIA.resumeMultipartUpload(key,uploadId);
+          if (request.method === "PUT" && action === "part") {
+            const rawPart = url.searchParams.get("part"), rawSize = url.searchParams.get("size");
+            const part = Number(rawPart), size = Number(rawSize);
+            if (!/^[1-9][0-9]*$/.test(rawPart || "") ||
+                !/^[1-9][0-9]*$/.test(rawSize || "") ||
+                !Number.isSafeInteger(size) || size<=16*1024*1024 || size>maxSize ||
+                part<1 || part>Math.ceil(size/partSize))
+              return fail("Invalid multipart part",400,false);
+            const expectedSize = part===Math.ceil(size/partSize) ?
+              size-(part-1)*partSize : partSize;
+            if (Number(request.headers.get("Content-Length") || 0)>partSize)
+              return fail("Multipart part exceeds 8 MB",413,false);
+            const digest = request.headers.get("X-Upload-SHA256");
+            if (!uploadSha256(digest)) return fail("Part SHA-256 required",400,false);
+            const bytes = await request.arrayBuffer();
+            if (bytes.byteLength!==expectedSize) return fail("Unexpected multipart part size",422,false);
+            if ((await digestUpload(bytes))!==digest) return fail("Multipart checksum mismatch",422,false);
+            try {
+              const stored = await session.uploadPart(part,bytes);
+              return reply({partNumber:stored.partNumber,etag:stored.etag,bytes:bytes.byteLength},200,false);
+            } catch(error) {
+              return fail("Could not save multipart part; retry",409,false);
+            }
+          }
+          if (request.method === "POST" && action === "complete") {
+            const d = await inputJSON(request);
+            const count = Math.ceil(d.size/partSize);
+            if (d.uploadId!==uploadId || !Number.isSafeInteger(d.size) ||
+                d.size<=16*1024*1024 || d.size>maxSize || !Array.isArray(d.parts) ||
+                d.parts.length!==count ||
+                !d.parts.every((v,i)=>v && v.partNumber===i+1 &&
+                  typeof v.etag==="string" && v.etag.length>4 && v.etag.length<256))
+              return fail("Incomplete multipart manifest",400,false);
+            try {
+              const object = await session.complete(d.parts);
+              if (object.size!==d.size) {
+                await env.MEDIA.delete(key);
+                return fail("Completed MP4 size mismatch",422,false);
+              }
+              return reply({uploaded:true,bytes:object.size,key},200,false);
+            } catch(error) {
+              return fail("Could not complete MP4; retry or restart",409,false);
+            }
+          }
+          if (request.method === "DELETE" && action === "abort") {
+            await session.abort();
+            return reply({aborted:true},200,false);
+          }
+          return fail("Multipart route not found",404,false);
+        }
         if (request.method === "GET" && path === "/v1/admin/processing-jobs") {
           const rows = await env.DB.prepare(
             "SELECT id,series_id,episode_number,status,progress,error_message,created_at,updated_at " +
