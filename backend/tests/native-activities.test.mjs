@@ -49,3 +49,24 @@ test("New APK retains Studio package, signature compatibility and increments ver
   assert.match(gradle,/versionName = "2\.0\.1"/);
   assert.match(gradle,/signingConfigs/);
 });
+
+test("Studio always shows upload details above content and pins progress in Activity Center",()=>{
+  const screen=java("StudioActivity"), center=java("ActivityCenter");
+  assert.match(screen,/transferTitle\.setText\("● EPISODE "/);
+  assert.match(screen,/transferText\.setText\(mb\(confirmed\)/);
+  assert.match(screen,/pauseButton\.setOnClickListener/);
+  assert.match(screen,/uploadButton\.setText\(done\?"↑ Upload MP4":"View upload"\)/);
+  assert.match(screen,/openActivityCenter\(\);\s*return;\s*}\s*String current=/);
+  assert.match(center,/dialogRoot\.addView\(active/);
+  assert.match(center,/dialogRoot\.addView\(scroll/);
+  assert.match(center,/size\(confirmed\).*size\(original\).*verified/);
+});
+test("Invalid multipart sessions can restart without losing chosen episode and file",()=>{
+  const engine=java("UploadEngine"),store=java("UploadStore");
+  assert.match(engine,/UploadStore\.resetMultipartSession\(app\)/);
+  assert.match(engine,/Upload session reset\. Tap Resume/);
+  assert.match(engine,/return false;\s*}\s*UploadStore\.changeState/);
+  assert.match(store,/static synchronized void resetMultipartSession/);
+  assert.match(store,/current\.remove\("uploadId"\)/);
+  assert.match(store,/current\.put\("confirmedBytes",0\)/);
+});
