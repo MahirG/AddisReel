@@ -30,7 +30,7 @@ function browser(initial,records={series:[],episodes:[]}) {
     else {json={saved:true};code=200}
     return {ok:true,status:code,async json(){return json}};
   }
-  const doc={readyState:"complete",getElementById:el,querySelectorAll(){return[]}};
+  const doc={readyState:"complete",hidden:false,getElementById:el,querySelectorAll(){return[]},addEventListener(){}};
   const window={parseMovieFields,addisreelPassword:{newSalt(){return "AbCdEfGhIjKlMnOpQrStUv"},async deriveProof(){return "a".repeat(64)}},scrollTo(){},addEventListener(){}};
   vm.runInNewContext(clientScript,{document:doc,window,navigator:{},fetch,Blob,console});
   const settle=()=>new Promise(resolve=>setTimeout(resolve,10));
