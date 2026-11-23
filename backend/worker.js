@@ -163,14 +163,18 @@ export default {
         const width = new URL(request.url).searchParams.get("w");
         if (width !== null && !["320","640","960"].includes(width)) return fail("Unsupported poster width",400);
         const variantKey = width ? s.poster_key.replace(/\.[^.]+$/, "-" + width + ".webp") : null;
+        const started = performance.now();
         const variant = variantKey ? await env.MEDIA.get(variantKey) : null;
         const object = variant || await env.MEDIA.get(s.poster_key);
+        const storageMs = Math.max(0,performance.now()-started).toFixed(1);
         if (!object) return fail("Poster unavailable",404);
         const etag = object.httpEtag;
         const headers = new Headers({...publicHeaders,
           "Content-Type": variant ? "image/webp" : (object.httpMetadata?.contentType || "image/jpeg"),
           "Cache-Control":"public, max-age=3600, stale-while-revalidate=86400",
-          "ETag":etag, "X-Poster-Variant":variant ? "webp-" + width : "original"});
+          "ETag":etag, "X-Poster-Variant":variant ? "webp-" + width : "original",
+          "Content-Length":String(object.size), "Server-Timing":"r2;dur=" + storageMs,
+          "Timing-Allow-Origin":"*"});
         if (request.headers.get("If-None-Match") === etag) return new Response(null,{status:304,headers});
         return new Response(object.body,{headers});
       }
