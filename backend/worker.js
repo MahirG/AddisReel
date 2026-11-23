@@ -179,7 +179,7 @@ export default {
           ).first();
           return reply({job:claimed || null},200,false);
         }
-        const update = /^\\/v1\\/processor\\/jobs\\/([a-f0-9-]{36})$/.exec(path);
+        const update = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})$/.exec(path);
         if (request.method === "PATCH" && update) {
           const d = await inputJSON(request);
           if (!["processing","ready","failed"].includes(d.status) ||
