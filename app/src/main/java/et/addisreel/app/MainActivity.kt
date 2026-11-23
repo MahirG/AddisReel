@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material3.Typography
@@ -790,7 +791,9 @@ private fun AddisReelApp() {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF211A2B))) {
                                             if (featured.posterUrl != null) {
-                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                placeholder = ColorPainter(Color(0xFF34243A)),
+                                                error = ColorPainter(Color(0xFF34243A)))
                                             }
                                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF29202C)))))
                                             Text("FEATURED DRAMA", modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -865,7 +868,9 @@ private fun AddisReelApp() {
                                                                         model = drama.posterUrl,
                                                                         contentDescription = "Poster for " + drama.title,
                                                                         contentScale = ContentScale.Crop,
-                                                                        modifier = Modifier.fillMaxSize()
+                                                                        modifier = Modifier.fillMaxSize(),
+                                                                        placeholder = ColorPainter(Color(0xFF34243A)),
+                                                                        error = ColorPainter(Color(0xFF34243A))
                                                                     )
                                                                 } else {
                                                                     Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(48.dp))
@@ -903,7 +908,9 @@ private fun AddisReelApp() {
                                                         Column {
                                                             Box(Modifier.fillMaxWidth().height(178.dp).background(Color(0xFF34243A))) {
                                                                 if (drama.posterUrl != null) {
-                                                                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                                                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                                    placeholder = ColorPainter(Color(0xFF34243A)),
+                                                                    error = ColorPainter(Color(0xFF34243A)))
                                                                 } else {
                                                                     Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(42.dp))
                                                                 }
@@ -1467,7 +1474,9 @@ private fun AddisReelApp() {
                 if (view.player !== player) view.player = player
                 view.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            placeholder = ColorPainter(Color(0xFF34243A)),
+            error = ColorPainter(Color(0xFF34243A))
         )
         if (showBuffering && buffering && !playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
