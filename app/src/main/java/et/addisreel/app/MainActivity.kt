@@ -765,7 +765,7 @@ private fun AddisReelApp() {
                                     item {
                                 ElevatedCard(
                                     onClick = { selectDrama(featured); tab = 0 },
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                     colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
