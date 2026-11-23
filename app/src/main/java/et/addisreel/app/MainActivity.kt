@@ -324,15 +324,18 @@ private fun AddisReelApp() {
                     Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
                     val lastReached = preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)
+                    // Only completed episodes count as watched; jumping ahead is not completion.
+                    val watchedEpisodes = preferences.getStringSet("watched_" + selected.title, emptySet())?.toSet().orEmpty()
+                    val watchedCount = watchedEpisodes.count { number -> number.toIntOrNull() in 1..selected.episodes }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Your progress · Episode $lastReached", color = Color.LightGray, fontSize = 12.sp)
+                        Text("Watched $watchedCount · Continue at EP $lastReached", color = Color.LightGray, fontSize = 12.sp)
                         Spacer(Modifier.weight(1f))
-                        Text("${((lastReached - 1) * 100 / selected.episodes.coerceAtLeast(1))}%", color = Gold, fontSize = 12.sp)
+                        Text("${(watchedCount * 100 / selected.episodes.coerceAtLeast(1))}%", color = Gold, fontSize = 12.sp)
                     }
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
-                        progress = { (lastReached - 1).toFloat() / selected.episodes.coerceAtLeast(1) },
+                        progress = { watchedCount.toFloat() / selected.episodes.coerceAtLeast(1) },
                         modifier = Modifier.fillMaxWidth().height(4.dp),
                         color = Gold,
                         trackColor = Color(0xFF34343B)
@@ -345,7 +348,7 @@ private fun AddisReelApp() {
                     ) {
                         items((1..selected.episodes).toList()) { number ->
                             val active = number == episode
-                            val watched = number < lastReached
+                            val watched = number.toString() in watchedEpisodes
                             Surface(
                                 onClick = { selectEpisode(number); showEpisodes = false },
                                 shape = RoundedCornerShape(14.dp),
@@ -367,7 +370,7 @@ private fun AddisReelApp() {
                                         Text(
                                             when {
                                                 active -> "Now playing"
-                                                watched -> "Previously reached"
+                                                watched -> "Watched"
                                                 number == lastReached -> "Continue here"
                                                 else -> "Tap to watch"
                                             },
@@ -434,7 +437,11 @@ private fun AddisReelApp() {
                                 Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, hasNextEpisode = episode < selected.episodes, autoPlayNext = autoNextEnabled, onAutoNextToggle = {
                                     autoNextEnabled = !autoNextEnabled
                                     preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
-                                }, onPrepareNext = { prepareNextEpisode() }, onEpisodeCompleted = {
+                                }, onPrepareNext = { prepareNextEpisode() }, onWatchedToEnd = {
+                                    val key = "watched_" + selected.title
+                                    val updated = preferences.getStringSet(key, emptySet())?.toSet().orEmpty() + episode.toString()
+                                    preferences.edit().putStringSet(key, updated).apply()
+                                }, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -943,7 +950,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPrepareNext: () -> Unit, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPrepareNext: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -1125,6 +1132,7 @@ private fun AddisReelApp() {
     var nextCountdown by remember(url, episodeKey) { mutableIntStateOf(3) }
     var nextRequested by remember(url, episodeKey) { mutableStateOf(false) }
     val currentOnEpisodeCompleted by rememberUpdatedState(onEpisodeCompleted)
+    val currentOnWatchedToEnd by rememberUpdatedState(onWatchedToEnd)
     LaunchedEffect(playbackEnded, hasNextEpisode, autoPlayNext, episodeKey) {
         if (playbackEnded && hasNextEpisode && autoPlayNext && !nextRequested) {
             nextCountdown = 3
@@ -1172,6 +1180,7 @@ private fun AddisReelApp() {
                 if (state == Player.STATE_ENDED && !completed) {
                     completed = true
                     preferences.edit().remove(positionKey).apply()
+                    currentOnWatchedToEnd()
                 }
             }
             override fun onPlayerError(error: PlaybackException) {
