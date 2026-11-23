@@ -164,6 +164,38 @@ export default {
         return new Response(object.body,{headers:{...publicHeaders,"Content-Type":object.httpMetadata?.contentType || "image/jpeg",
           "Cache-Control":"public, max-age=86400","X-Content-Type-Options":"nosniff"}});
       }
+      // Separate machine-to-machine access. Never accept an owner browser cookie here.
+      if (path.startsWith("/v1/processor/")) {
+        const secret = env.PROCESSOR_TOKEN;
+        const bearer = request.headers.get("Authorization") || "";
+        if (typeof secret !== "string" || secret.length < 32 ||
+            bearer !== "Bearer " + secret) return fail("Unauthorized processor",401,false);
+        if (request.method === "POST" && path === "/v1/processor/claim") {
+          // Atomic D1 update prevents two processors from claiming the same job.
+          const claimed = await env.DB.prepare(
+            "UPDATE video_processing_jobs SET status='processing',progress=0,updated_at=datetime('now') " +
+            "WHERE id=(SELECT id FROM video_processing_jobs WHERE status='queued' ORDER BY created_at,id LIMIT 1) " +
+            "AND status='queued' RETURNING id,series_id,episode_number,source_key,status,progress"
+          ).first();
+          return reply({job:claimed || null},200,false);
+        }
+        const update = /^\\/v1\\/processor\\/jobs\\/([a-f0-9-]{36})$/.exec(path);
+        if (request.method === "PATCH" && update) {
+          const d = await inputJSON(request);
+          if (!["processing","ready","failed"].includes(d.status) ||
+              !Number.isInteger(d.progress) || d.progress<0 || d.progress>100 ||
+              (d.status==="ready" && d.progress!==100) ||
+              (d.status==="failed" && (typeof d.error !== "string" || d.error.length>300)))
+            return fail("Invalid job state",400,false);
+          const changed = await env.DB.prepare(
+            "UPDATE video_processing_jobs SET status=?,progress=?,error_message=?,updated_at=datetime('now') " +
+            "WHERE id=? AND status='processing'"
+          ).bind(d.status,d.progress,d.status==="failed"?d.error:null,update[1]).run();
+          if (!changed.meta?.changes) return fail("Job is not processing",409,false);
+          return reply({updated:true},200,false);
+        }
+        return fail("Processor route not found",404,false);
+      }
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
