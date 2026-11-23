@@ -156,6 +156,10 @@ private fun AddisReelApp() {
     var subtitlesEnabled by remember {
         mutableStateOf(preferences.getBoolean("cinema_subtitles", true))
     }
+    var videoQuality by remember {
+        mutableStateOf(preferences.getString("cinema_quality", "Auto") ?: "Auto")
+    }
+    var qualityMenuExpanded by remember { mutableStateOf(false) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -384,7 +388,7 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -475,6 +479,20 @@ private fun AddisReelApp() {
                                             contentDescription = if (subtitlesEnabled) "Turn subtitles off" else "Turn subtitles on",
                                             tint = if (subtitlesEnabled) Gold else Color.Gray
                                         )
+                                    }
+                                    Box {
+                                        TextButton(onClick = { qualityMenuExpanded = true }) {
+                                            Text(videoQuality, color = Gold, fontSize = 12.sp)
+                                        }
+                                        DropdownMenu(expanded = qualityMenuExpanded, onDismissRequest = { qualityMenuExpanded = false }) {
+                                            listOf("Auto", "Data saver", "High").forEach { mode ->
+                                                DropdownMenuItem(text = { Text(mode) }, onClick = {
+                                                    videoQuality = mode
+                                                    preferences.edit().putString("cinema_quality", mode).apply()
+                                                    qualityMenuExpanded = false
+                                                })
+                                            }
+                                        }
                                     }
                                     IconButton(onClick = {
                                         fillVideo = !fillVideo
@@ -843,7 +861,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -920,13 +938,14 @@ private fun AddisReelApp() {
     }
     // React to Wi-Fi/mobile handover without replacing the player or losing
     // the current position. Unmetered connections regain unrestricted ABR.
-    LaunchedEffect(player, isMetered) {
+    LaunchedEffect(player, isMetered, quality) {
         val selector = player.trackSelector as? DefaultTrackSelector
-        selector?.setParameters(
-            selector.buildUponParameters().setMaxVideoBitrate(
-                if (isMetered) 1_500_000 else Int.MAX_VALUE
-            )
-        )
+        val bitrateLimit = when (quality) {
+            "Data saver" -> 650_000
+            "High" -> Int.MAX_VALUE
+            else -> if (isMetered) 1_500_000 else Int.MAX_VALUE
+        }
+        selector?.setParameters(selector.buildUponParameters().setMaxVideoBitrate(bitrateLimit))
     }
     var buffering by remember(url, episodeKey) { mutableStateOf(true) }
     // Avoid flashing a loading spinner for brief, normal buffer transitions.
