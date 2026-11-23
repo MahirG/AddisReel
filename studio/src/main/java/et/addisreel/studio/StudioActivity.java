@@ -343,7 +343,9 @@ public final class StudioActivity extends Activity {
         boolean active="queued".equals(state)||"running".equals(state);
         long total=info.optLong("size",0);
         long confirmed=Math.max(0,Math.min(total,info.optLong("confirmedBytes",0)));
+        long sending=Math.max(confirmed,Math.min(total,info.optLong("sendingBytes",confirmed)));
         int percent=total>0?(int)Math.min(100,100L*confirmed/total):0;
+        int sendingPercent=total>0?(int)Math.min(100,100L*sending/total):0;
         int episode=info.optInt("episodeNumber");
         JSONObject remote=OptimizationClient.matching(this,info.optString("seriesId"),episode);
         String jobState=remote==null?"":remote.optString("status");
@@ -353,8 +355,10 @@ public final class StudioActivity extends Activity {
             transferText.setText(remote==null?"R2 verified · Checking optimization":
                 OptimizationClient.stateLabel(jobState));
         }else if(active){
-            transferTitle.setText("● EPISODE "+episode+" · "+percent+"% VERIFIED");
-            transferText.setText(mb(confirmed)+" / "+mb(total)+" MB · "+message);
+            transferTitle.setText("● EPISODE "+episode+" · "+
+                (sending>confirmed?sendingPercent+"% SENDING":percent+"% VERIFIED"));
+            transferText.setText(mb(sending)+" MB sending · "+mb(confirmed)+" / "+
+                mb(total)+" MB R2-verified\n"+message);
         }else if("paused".equals(state)){
             transferTitle.setText("Ⅱ EPISODE "+episode+" · PAUSED");
             transferText.setText(mb(confirmed)+" / "+mb(total)+" MB saved · Tap Resume");
@@ -371,9 +375,10 @@ public final class StudioActivity extends Activity {
         transferProgress.setVisibility(View.VISIBLE);
         // A pulsing bar means the first part is in flight; verified bytes
         // are still 0 and no unconfirmed progress is presented as saved.
-        boolean initialTransfer=active&&"uploading".equals(stage)&&confirmed==0;
+        boolean initialTransfer=active&&"uploading".equals(stage)&&sending==0;
         transferProgress.setIndeterminate(remoteBusy||initialTransfer);
-        if(!remoteBusy&&!initialTransfer)transferProgress.setProgress(done?100:percent);
+        if(!remoteBusy&&!initialTransfer)
+            transferProgress.setProgress(done?100:active?sendingPercent:percent);
         pauseButton.setVisibility(active?View.VISIBLE:View.GONE);
         boolean canResume="paused".equals(state)||"error".equals(state)||
             "signin".equals(state)||"interrupted".equals(state);
