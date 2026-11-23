@@ -10,6 +10,7 @@ import java.net.URL
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -139,6 +140,8 @@ private fun AddisReelApp() {
     var catalog by remember { mutableStateOf(previewCatalog) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
+    var nextEpisodeUrl by remember { mutableStateOf<String?>(null) }
+    val appScope = rememberCoroutineScope()
     // Prefetch only the next playback URL (not the video bytes) to avoid extra mobile data.
     var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
     // Signed playback URLs may expire. Never reuse a prefetched URL indefinitely.
@@ -211,6 +214,7 @@ private fun AddisReelApp() {
     var streamLoading by remember { mutableStateOf(false) }
     LaunchedEffect(selected.id, episode, streamRefresh) {
         episodeUrl = null
+        nextEpisodeUrl = null
         streamLoading = selected.id.isNotBlank()
         val seriesId = selected.id
         val currentEpisode = episode
@@ -236,6 +240,29 @@ private fun AddisReelApp() {
                 }.getOrNull()
                 prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
                 prefetchedAtMs = if (nextUrl != null) android.os.SystemClock.elapsedRealtime() else 0L
+                nextEpisodeUrl = nextUrl
+            }
+        }
+    }
+    // Refresh expiring playback credentials near the episode ending; a URL
+    // fetched at the start can be stale by the time a longer episode finishes.
+    fun prepareNextEpisode() {
+        val seriesId = selected.id
+        val currentEpisode = episode
+        val age = android.os.SystemClock.elapsedRealtime() - prefetchedAtMs
+        val currentPrefetch = prefetchedEpisode
+        if (seriesId.isNotBlank() && currentEpisode < selected.episodes &&
+            !(currentPrefetch?.first == seriesId && currentPrefetch.second == currentEpisode + 1 && age in 0L..35_000L)) {
+            appScope.launch {
+                val refreshed = runCatching {
+                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
+                }.getOrNull()
+                // Ignore slow responses after the viewer changes episodes or series.
+                if (refreshed != null && selected.id == seriesId && episode == currentEpisode) {
+                    nextEpisodeUrl = refreshed
+                    prefetchedEpisode = Triple(seriesId, currentEpisode + 1, refreshed)
+                    prefetchedAtMs = android.os.SystemClock.elapsedRealtime()
+                }
             }
         }
     }
@@ -403,7 +430,7 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, hasNextEpisode = episode < selected.episodes, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, hasNextEpisode = episode < selected.episodes, onPrepareNext = { prepareNextEpisode() }, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -890,7 +917,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, hasNextEpisode: Boolean, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, onPrepareNext: () -> Unit, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -1034,6 +1061,37 @@ private fun AddisReelApp() {
                     preferences.edit().putLong(positionKey, failurePositionMs).apply()
                 }
                 playbackError = true
+            }
+        }
+    }
+    // Bring a short-lived next-episode token up to date at the last 35 seconds.
+    // Download at most the first 256 KiB of the next MP4 near its start window,
+    // on validated unmetered networks only. HLS is URL-prefetched, not downloaded.
+    val latestPrepareNext by rememberUpdatedState(onPrepareNext)
+    LaunchedEffect(player, hasNextEpisode, episodeKey) {
+        if (hasNextEpisode) {
+            while (true) {
+                delay(1_000L)
+                val duration = player.duration
+                val remaining = duration - player.currentPosition
+                if (player.isPlaying && duration > 0L && remaining in 1L..35_000L) {
+                    latestPrepareNext()
+                    break
+                }
+            }
+        }
+    }
+    LaunchedEffect(player, nextEpisodeUrl, isOnline, isMetered, inForeground) {
+        val upcoming = nextEpisodeUrl
+        if (upcoming != null && hasNextEpisode && isOnline && !isMetered && inForeground) {
+            while (true) {
+                delay(1_000L)
+                val duration = player.duration
+                val remaining = duration - player.currentPosition
+                if (player.isPlaying && duration > 0L && remaining in 1L..25_000L) {
+                    NextEpisodePreloader.warmMp4OnUnmeteredNetwork(context, upcoming, StreamCache.get(context))
+                    break
+                }
             }
         }
     }
