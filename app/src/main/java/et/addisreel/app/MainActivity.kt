@@ -40,6 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -687,7 +690,7 @@ private fun AddisReelApp() {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
                                 Text("AddisReel", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Gold)
-                                Text("Ethiopian stories, one episode at a time", fontSize = 11.sp, color = Color.LightGray)
+                                Text("Big emotions. Short episodes.", fontSize = 12.sp, color = Color.LightGray, lineHeight = 18.sp)
                             }
                             IconButton(onClick = {
                                 homeSearchExpanded = !homeSearchExpanded
@@ -696,7 +699,7 @@ private fun AddisReelApp() {
                                 Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
                             }
                         }
-                        if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
+                        if (!remoteCatalogAvailable) Text("Explore upcoming stories · Episodes will appear when available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (!discoverOnlySaved || drama.title in saved) &&
@@ -725,7 +728,7 @@ private fun AddisReelApp() {
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                label = { Text("Search Ethiopian dramas") },
+                                label = { Text("Find your next favorite story") },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                 singleLine = true,
                                 trailingIcon = {
@@ -793,10 +796,10 @@ private fun AddisReelApp() {
                                             Text("FEATURED DRAMA", modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                         }
                                         Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.title, fontSize = 27.sp, fontWeight = FontWeight.Bold, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
-                                        Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text("▶  Watch now", color = Gold, fontWeight = FontWeight.SemiBold)
+                                        Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = Color(0xFFE4E0E7))
+                                        Text("▶  Start Watching", color = Gold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -806,8 +809,8 @@ private fun AddisReelApp() {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Stories for you", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                                            Text("Ethiopian short dramas · Tap a poster to watch", fontSize = 12.sp, color = Color.LightGray)
+                                            Text("Picked for You", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                            Text("Stories selected from what you love watching", fontSize = 13.sp, color = Color.LightGray, lineHeight = 19.sp)
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -853,7 +856,7 @@ private fun AddisReelApp() {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Explore more dramas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                                            Text("More Stories to Love", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
                                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                                 catalog.asReversed().take(10).forEach { drama ->
                                                     Card(
@@ -881,7 +884,7 @@ private fun AddisReelApp() {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Continue Watching", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                            Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -939,8 +942,8 @@ private fun AddisReelApp() {
                                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(Icons.Default.SearchOff, contentDescription = null, tint = Gold, modifier = Modifier.size(44.dp))
                                             Spacer(Modifier.height(12.dp))
-                                            Text("No dramas found", fontWeight = FontWeight.Bold)
-                                            Text("Try another title or genre", color = Color.LightGray)
+                                            Text("No stories found", fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp)
+                                            Text("Try a different title, genre, or filter.", color = Color.LightGray, fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center)
                                             TextButton(onClick = { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false; discoverSort = "Featured" }) { Text("Clear filters") }
                                         }
                                     }
@@ -1020,8 +1023,8 @@ private fun AddisReelApp() {
                             ) {
                                 Icon(if (libraryFilter == "History") Icons.Default.History else if (libraryFilter == "Completed") Icons.Default.CheckCircle else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
                                 Text(when (libraryFilter) { "History" -> "No recently watched dramas"; "Completed" -> "No completed dramas yet"; else -> "Your collection starts here" }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(when (libraryFilter) { "History" -> "Your recently opened dramas will appear here."; "Completed" -> "Finish every episode of a drama to see it here."; else -> "Save Ethiopian dramas to find them here later." }, color = Color.LightGray)
-                                Button(onClick = { tab = 1 }) { Text("Explore dramas") }
+                                Text(when (libraryFilter) { "History" -> "Stories you start watching will appear here."; "Completed" -> "Complete a series to add it to your finished stories."; else -> "Bookmark the stories you love and return anytime." }, color = Color.LightGray)
+                                Button(onClick = { tab = 1 }) { Text("Discover Stories") }
                             }
                         } else {
                             LazyColumn(
