@@ -127,7 +127,8 @@ final class UploadEngine {
         if(state==null)return false;
         if("paused".equals(state.optString("state"))||"done".equals(state.optString("state")))return false;
         try{
-            UploadStore.changeState(app,"running","Starting secure upload");
+            UploadStore.changeState(app,"running","Preparing your video");
+            UploadStore.stage(app,"preparing","Checking file and upload session");
             String series=state.getString("seriesId");
             int episode=state.getInt("episodeNumber");
             String title=state.getString("title");
@@ -141,6 +142,7 @@ final class UploadEngine {
             if(!auth.optBoolean("authenticated"))throw new HttpError(401,"Sign in to Studio first");
 
             if(!state.optBoolean("episodeCreated")){
+                UploadStore.stage(app,"saving","Saving episode details");
                 status("Saving episode details…",0);
                 request("/v1/admin/episodes","POST",data("seriesId",series,"number",episode,
                         "title",title,"durationSeconds",0,"status","draft","licensed",false),null);
@@ -161,6 +163,7 @@ final class UploadEngine {
             int partBytes=state.optInt("partSize",EIGHT_MB);
             if(partBytes!=EIGHT_MB)throw new IOException("Server upload chunk size mismatch");
             JSONArray existing=parts(state);
+            UploadStore.stage(app,"uploading","Uploading securely to R2");
             int total=(int)((size+partBytes-1)/partBytes);
             Uri uri=Uri.parse(state.getString("fileUri"));
             try(InputStream input=app.getContentResolver().openInputStream(uri)){
@@ -171,6 +174,7 @@ final class UploadEngine {
                     int length=(int)Math.min(partBytes,size-offset);
                     if(hasPart(existing,n)){
                         skipFully(input,length);
+                        UploadStore.updateConfirmedBytes(app,offset+length);
                         status("Resuming saved video chunks…",(int)((offset+length)*100/size));
                         continue;
                     }
@@ -197,11 +201,14 @@ final class UploadEngine {
                     existing.put(data("partNumber",n,"etag",done.getString("etag")));
                     state.put("parts",existing);
                     UploadStore.checkpoint(app,state);
-                    status("Episode "+episode+" · Part "+n+"/"+total,(int)((offset+length)*100/size));
+                    UploadStore.updateConfirmedBytes(app,offset+length);
+                    status("Episode "+episode+" · "+((offset+length)/(1024*1024))+" / "+(size/(1024*1024))+
+                        " MB confirmed · Part "+n+"/"+total,(int)((offset+length)*100/size));
                 }
             }
             ensureActive();
-            status("Finalizing video upload…",99);
+            UploadStore.stage(app,"verifying","Verifying uploaded video");
+            status("Finalizing and verifying the uploaded file…",99);
             JSONObject finalParts=new JSONObject();
             finalParts.put("size",size);finalParts.put("parts",existing);
             try{
@@ -215,7 +222,8 @@ final class UploadEngine {
                     "GET",null,null);
                 if(!media.optBoolean("ready")||media.optLong("sizeBytes")!=size)throw error;
             }
-            UploadStore.changeState(app,"done","Episode uploaded — ready for FFmpeg optimization");
+            UploadStore.stage(app,"uploaded","Upload verified; queued for external optimization");
+            UploadStore.changeState(app,"done","Episode uploaded — awaiting FFmpeg optimization");
             status("Video uploaded successfully",100);
             return false;
         }catch(InterruptedIOException error){

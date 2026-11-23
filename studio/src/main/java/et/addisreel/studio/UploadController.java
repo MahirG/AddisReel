@@ -45,6 +45,7 @@ final class UploadController {
     }
     static void cancel(Context context) {
         pause(context);
+        UploadStore.changeState(context,"cancelled","Upload cancelled by owner");
         UploadStore.clear(context);
         android.app.NotificationManager manager=(android.app.NotificationManager)
                 context.getSystemService(Context.NOTIFICATION_SERVICE);
