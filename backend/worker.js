@@ -74,6 +74,8 @@ async function serveR2(env, key, path, request) {
   headers.set("Cache-Control", path.endsWith(".m3u8") ? "public, max-age=30" : "public, max-age=120");
   headers.set("Accept-Ranges","bytes");
   headers.set("ETag",object.httpEtag);
+  if (!range && request.headers.get("If-None-Match") === object.httpEtag)
+    return new Response(null,{status:304,headers});
   if (object.range && range) {
     const offset = object.range.offset || 0;
     const len = object.range.length || object.size;
@@ -114,7 +116,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:3});
+        return reply({status:"ok",service:"addisreel-catalog",phase:4,features:["multipart-mp4","processor-hls","studio-ops"]});
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
         return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
@@ -179,11 +181,20 @@ export default {
           format:hls ? "hls" : "mp4"});
       }
       const media = /^\/v1\/media\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
-      if (request.method === "GET" && media) {
+      if ((request.method === "GET" || request.method === "HEAD") && media) {
         const e=await playableEpisode(env,media[1],Number(media[2]));
         let file;
         try { file=decodeURIComponent(media[3]); } catch { return fail("Invalid media filename"); }
         if (!e || !fileOK(file)) return fail("Media unavailable",404);
+        if (request.method === "HEAD") {
+          const object = await env.MEDIA.head(e.media_prefix + "/" + file);
+          if (!object) return fail("Media unavailable",404);
+          return new Response(null,{headers:{
+            ...publicHeaders,"Content-Type":extType(file),"Content-Length":String(object.size),
+            "Cache-Control":file.endsWith(".m3u8") ? "public, max-age=30" : "public, max-age=120",
+            "Accept-Ranges":"bytes","ETag":object.httpEtag
+          }});
+        }
         return serveR2(env,e.media_prefix + "/" + file,file,request);
       }
       const poster = /^\/v1\/posters\/([a-z0-9-]+)$/.exec(path);
