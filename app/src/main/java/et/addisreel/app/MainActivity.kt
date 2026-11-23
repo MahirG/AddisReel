@@ -691,7 +691,7 @@ private fun AddisReelApp() {
                             }
                             IconButton(onClick = {
                                 homeSearchExpanded = !homeSearchExpanded
-                                if (!homeSearchExpanded) { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false }
+                                if (!homeSearchExpanded) { discoverQuery = ""; discoverGenre = "All"; discoverSort = "Featured"; discoverOnlySaved = false; discoverOnlyUnwatched = false }
                             }) {
                                 Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
                             }
@@ -773,7 +773,11 @@ private fun AddisReelApp() {
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
-                                val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
+                                val preferredGenre = favoriteGenres.maxByOrNull { it.value }?.key
+                                val featured = catalog.firstOrNull { it.id.isNotBlank() && it.genre == preferredGenre }
+                                    ?: catalog.firstOrNull { it.id.isNotBlank() && it.title in saved }
+                                    ?: catalog.firstOrNull { it.id.isNotBlank() }
+                                    ?: catalog.first()
                                     item {
                                 ElevatedCard(
                                     onClick = { selectDrama(featured); tab = 0 },
