@@ -1275,6 +1275,7 @@ private fun AddisReelApp() {
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
     var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
+    var credentialRejected by remember(url, episodeKey) { mutableStateOf(false) }
     var failurePositionMs by remember(url, episodeKey) {
         mutableLongStateOf(preferences.getLong(positionKey, 0L))
     }
@@ -1308,7 +1309,7 @@ private fun AddisReelApp() {
     // ExoPlayer can remain in BUFFERING without emitting an error on weak
     // connections. Detect a prolonged stall and use the same bounded retry path.
     LaunchedEffect(buffering, isOnline, inForeground, playbackError, player) {
-        if (buffering && isOnline && inForeground && player.playWhenReady && !playbackError) {
+        if (buffering && isOnline && inForeground && player.playWhenReady && !playbackError && !credentialRejected) {
             delay(15_000L)
             if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING && !playbackError) {
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -1373,7 +1374,7 @@ private fun AddisReelApp() {
         }
     }
     LaunchedEffect(playbackError, retryCount, isOnline, inForeground, player) {
-        if (playbackError && isOnline && inForeground && retryCount < 3) {
+        if (playbackError && isOnline && inForeground && !credentialRejected && retryCount < 3) {
             retryPending = true
             // Back off repeated failures; never spin endlessly on a bad stream.
             delay(when (retryCount) { 0 -> 800L; 1 -> 2000L; else -> 4000L })
@@ -1400,6 +1401,7 @@ private fun AddisReelApp() {
                 if (state == Player.STATE_READY) {
                     retryCount = 0
                     playbackError = false
+                    credentialRejected = false
                     // A replayed episode must save its position again if interrupted.
                     if (completed && player.currentPosition < 1000L) completed = false
                 }
@@ -1415,7 +1417,10 @@ private fun AddisReelApp() {
                 val httpStatus = generateSequence(error as Throwable?) { it.cause }
                     .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
                     .firstOrNull()?.responseCode
-                if (httpStatus == 401 || httpStatus == 403) currentOnPlaybackUrlExpired(httpStatus)
+                if (httpStatus == 401 || httpStatus == 403) {
+                    credentialRejected = true
+                    currentOnPlaybackUrlExpired(httpStatus)
+                }
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
                 if (failurePositionMs > 0L) {
                     preferences.edit().putLong(positionKey, failurePositionMs).apply()
@@ -1476,12 +1481,12 @@ private fun AddisReelApp() {
             },
             modifier = Modifier.fillMaxSize()
         )
-        if (showBuffering && buffering && !playbackError) {
+        if (showBuffering && buffering && !playbackError && inForeground) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Gold)
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (isOnline) "Preparing your episode…" else "Internet disconnected — waiting to reconnect",
+                    if (isOnline) "Buffering your episode…" else "Waiting for an internet connection…",
                     color = Color.White,
                     fontSize = 13.sp
                 )
@@ -1535,7 +1540,8 @@ private fun AddisReelApp() {
             ) {
                 Text(
                     when {
-                        !isOnline -> "You're offline. Playback will retry when internet returns."
+                        !isOnline -> "You're offline. Playback will resume when your connection returns." 
+                        credentialRejected -> "Your viewing session expired. Refreshing the episode link…"
                         !inForeground -> "Playback paused in the background"
                         retryPending -> "Connection interrupted — reconnecting…"
                         retryCount >= 3 -> "Can't play right now. Check your connection and try again."
@@ -1546,7 +1552,7 @@ private fun AddisReelApp() {
                 Spacer(Modifier.height(8.dp))
                 if (retryPending && isOnline) {
                     CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
-                } else if (isOnline && inForeground) {
+                } else if (isOnline && inForeground && !credentialRejected) {
                     Button(onClick = {
                         retryCount = 0
                         failurePositionMs = player.currentPosition.coerceAtLeast(failurePositionMs)
