@@ -200,13 +200,18 @@ final class ActivityCenter {
         long original=hasLocal?local.optLong("size"):0;
         long confirmed=hasLocal?local.optLong("confirmedBytes"):0;
         if(uploadComplete)confirmed=original;
+        long sending=hasLocal?Math.max(confirmed,local.optLong("sendingBytes",confirmed)):0;
+        sending=Math.min(original,sending);
         if(original>0 && !uploadComplete)percent=(int)Math.min(100,100*confirmed/original);
-        uploadProgress.setIndeterminate(uploading&&confirmed==0&&"uploading".equals(stage));
-        uploadProgress.setProgress(percent);
+        int sendingPercent=original>0?(int)Math.min(100,100*sending/original):0;
+        boolean moving=uploading&&sending>confirmed;
+        uploadProgress.setIndeterminate(uploading&&sending==0&&"uploading".equals(stage));
+        uploadProgress.setProgress(moving?sendingPercent:percent);
         uploadProgress.setVisibility(hasLocal?View.VISIBLE:View.GONE);
         currentBytes.setText(hasLocal?(uploadComplete?
-            "Uploaded "+size(original)+" • File verified":
-            size(confirmed)+" / "+size(original)+" verified · "+percent+"% complete"):"");
+            "Uploaded "+size(original)+" • R2 verified":
+            (moving?"Sending "+size(sending)+" ("+sendingPercent+"%) · awaiting confirmation\n":"")+
+            size(confirmed)+" / "+size(original)+" R2 verified · "+percent+"% saved"):"");
         boolean showSpin=uploadComplete&&(!("ready".equals(remoteState)||"original".equals(remoteState)||"failed".equals(remoteState)));
         busyIndicator.setVisibility(showSpin?View.VISIBLE:View.GONE);
         pause.setVisibility(uploading?View.VISIBLE:View.GONE);
