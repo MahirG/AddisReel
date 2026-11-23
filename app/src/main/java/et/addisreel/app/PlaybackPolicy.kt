@@ -24,6 +24,26 @@ internal object PlaybackPolicy {
         if (episodeCount <= 0) 0
         else ((watchedCount.coerceIn(0, episodeCount).toLong() * 100L) / episodeCount).toInt()
 
+    /** A series is complete only when every actual episode is marked watched. */
+    fun isFullyWatched(watchedEpisodes: Set<String>, episodeCount: Int): Boolean =
+        episodeCount > 0 && (1..episodeCount).all { it.toString() in watchedEpisodes }
+
+    /** Combine finished episodes with a saved in-episode resume point without double counting. */
+    fun seriesProgress(
+        watchedEpisodes: Set<String>,
+        episodeCount: Int,
+        resumeEpisode: Int,
+        positionMs: Long,
+        durationMs: Long
+    ): Float {
+        if (episodeCount <= 0) return 0f
+        val watchedCount = (1..episodeCount).count { it.toString() in watchedEpisodes }
+        val canCountResume = resumeEpisode in 1..episodeCount &&
+            resumeEpisode.toString() !in watchedEpisodes && positionMs > 0L && durationMs > 0L
+        val partial = if (canCountResume) (positionMs.toDouble() / durationMs).coerceIn(0.0, 0.99) else 0.0
+        return ((watchedCount + partial) / episodeCount).toFloat().coerceIn(0f, 1f)
+    }
+
     fun canRefreshRejectedLink(httpCode: Int?, attempts: Int): Boolean =
         (httpCode == 401 || httpCode == 403) && attempts < 1
 }
