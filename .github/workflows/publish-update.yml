@@ -110,7 +110,7 @@ jobs:
           print('Verified:', package, version, code, digest)
           PY
         env:
-          RELEASE_NOTES: ${{ inputs.release_notes || '🎬 AddisReel 0.8.0 — Cinematic Experience: a new drama discovery homepage, Continue Watching, My List, smarter poster loading, and more reliable playback. New poster uploads gain optimized WebP delivery.' }}
+          RELEASE_NOTES: ${{ inputs.release_notes || '🎬 AddisReel 0.8.0 — Cinematic Experience — a new drama discovery homepage, Continue Watching, My List, smarter poster loading, and more reliable playback. New poster uploads gain optimized WebP delivery.' }}
       - name: Publish immutable APK, then update manifest
         shell: bash
         run: |
