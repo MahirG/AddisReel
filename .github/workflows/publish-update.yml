@@ -1,5 +1,10 @@
 name: Publish AddisReel in-app update
 on:
+  # One-off, explicitly approved v0.8.0 promotion from its tested branch.
+  push:
+    branches: ['feature/android-v080-cinematic-experience']
+    paths:
+      - '.release/0.8.0-publish.json'
   workflow_dispatch:
     inputs:
       release_notes:
@@ -20,7 +25,9 @@ concurrency:
 
 jobs:
   publish:
-    if: inputs.confirm_publish == 'PUBLISH'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.confirm_publish == 'PUBLISH') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/feature/android-v080-cinematic-experience')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: production-updates
@@ -37,6 +44,22 @@ jobs:
       R2_BUCKET: addisreel-android-releases
     steps:
       - uses: actions/checkout@v4
+      - name: Verify one-time publication marker
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,re,pathlib
+          approved=json.loads(pathlib.Path('.release/0.8.0-publish.json').read_text())
+          assert approved == {'version':'0.8.0','versionCode':17,'confirm':'PUBLISH','branch':'feature/android-v080-cinematic-experience'}, 'Unexpected release marker'
+          gradle=pathlib.Path('app/build.gradle.kts').read_text()
+          assert re.search(r'versionCode\s*=\s*17\b',gradle) and re.search(r'versionName\s*=\s*"0\.8\.0"',gradle), 'Release version mismatch'
+          print('Approved one-time 0.8.0 / build 17 publication')
+          PY
+      - name: Confirm live Cloudflare readiness
+        if: github.event_name == 'push'
+        shell: bash
+        run: bash .github/scripts/live-smoke-v080.sh
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -87,7 +110,7 @@ jobs:
           print('Verified:', package, version, code, digest)
           PY
         env:
-          RELEASE_NOTES: ${{ inputs.release_notes }}
+          RELEASE_NOTES: ${{ inputs.release_notes || '🎬 AddisReel 0.8.0 — Cinematic Experience — a new drama discovery homepage, Continue Watching, My List, smarter poster loading, and more reliable playback. New poster uploads gain optimized WebP delivery.' }}
       - name: Publish immutable APK, then update manifest
         shell: bash
         run: |
