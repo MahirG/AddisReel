@@ -1474,9 +1474,7 @@ private fun AddisReelApp() {
                 if (view.player !== player) view.player = player
                 view.resizeMode = if (fillVideo) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
             },
-            modifier = Modifier.fillMaxSize(),
-            placeholder = ColorPainter(Color(0xFF34243A)),
-            error = ColorPainter(Color(0xFF34243A))
+            modifier = Modifier.fillMaxSize()
         )
         if (showBuffering && buffering && !playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
