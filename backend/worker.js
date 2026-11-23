@@ -37,6 +37,12 @@ async function inputJSON(request) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid JSON object");
   return value;
 }
+// Check only owner-supplied file identities. R2 metadata remains private.
+function uploadSha256(value) { return typeof value === "string" && /^[a-f0-9]{64}$/.test(value); }
+async function digestUpload(bytes) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+}
 function textField(v, max, required = true) {
   return typeof v === "string" && v.length <= max && (!required || v.length > 0);
 }
@@ -366,18 +372,49 @@ export default {
           await env.MEDIA.put(key,bytes,{httpMetadata:{contentType:"image/webp"}});
           return reply({uploaded:true,width:Number(upVariant[2]),bytes:bytes.byteLength},200,false);
         }
+        // Server-confirmed file-level resumption. A client can skip only a file
+        // whose byte length AND verified SHA-256 match its local selected copy.
+        // Older objects with no hash metadata are intentionally re-uploaded.
+        const fileStatus=/^\/v1\/admin\/hls\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)\/status$/.exec(path);
+        if (request.method === "GET" && fileStatus) {
+          let file;
+          try { file=decodeURIComponent(fileStatus[3]); } catch { return fail("Invalid filename",400,false); }
+          const checksum=url.searchParams.get("sha256"), size=Number(url.searchParams.get("size"));
+          if (!fileOK(file) || !uploadSha256(checksum) ||
+              !Number.isSafeInteger(size) || size<1 || size>16*1024*1024 ||
+              !/^([1-9][0-9]*)$/.test(url.searchParams.get("size") || ""))
+            return fail("Invalid upload verification",400,false);
+          const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
+            .bind(fileStatus[1],Number(fileStatus[2])).first();
+          if (!e) return fail("Create episode before media upload",404,false);
+          const object=await env.MEDIA.head(e.media_prefix+"/"+file);
+          const uploaded=!!object && object.size===size && object.customMetadata?.sha256===checksum;
+          return reply({uploaded,bytes:uploaded?size:0},200,false);
+        }
         const upHls=/^\/v1\/admin\/hls\/([a-z0-9-]+)\/([1-9][0-9]*)\/(.+)$/.exec(path);
         if (request.method === "PUT" && upHls) {
           let file;
           try { file=decodeURIComponent(upHls[3]); } catch { return fail("Invalid filename",400,false); }
           if (!fileOK(file)) return fail("Invalid HLS filename",400,false);
+          const expected=request.headers.get("X-Upload-SHA256");
+          if (expected !== null && !uploadSha256(expected))
+            return fail("Invalid SHA-256 header",400,false);
           const e=await env.DB.prepare("SELECT media_prefix FROM episodes WHERE series_id=? AND number=?")
             .bind(upHls[1],Number(upHls[2])).first();
           if (!e) return fail("Create episode before media upload",404,false);
           const bytes=await request.arrayBuffer();
           if (!bytes.byteLength || bytes.byteLength > 16*1024*1024) return fail("HLS file must be 1-16MB",413,false);
-          await env.MEDIA.put(e.media_prefix+"/"+file,bytes,{httpMetadata:{contentType:extType(file)}});
-          return reply({uploaded:true,key:e.media_prefix+"/"+file},200,false);
+          let checksum;
+          if (expected !== null) {
+            checksum=await digestUpload(bytes);
+            if (checksum !== expected) return fail("Upload checksum mismatch",422,false);
+          }
+          await env.MEDIA.put(e.media_prefix+"/"+file,bytes,{
+            httpMetadata:{contentType:extType(file)},
+            ...(checksum ? {customMetadata:{sha256:checksum}} : {})
+          });
+          return reply({uploaded:true,key:e.media_prefix+"/"+file,bytes:bytes.byteLength,
+            ...(checksum ? {sha256:checksum} : {})},200,false);
         }
         return fail("Admin route not found",404,false);
       }
