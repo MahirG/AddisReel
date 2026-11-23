@@ -227,7 +227,7 @@ private fun AddisReelApp() {
             val warm = prefetchedEpisode
             episodeUrl = if (
                 streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode &&
-                android.os.SystemClock.elapsedRealtime() - prefetchedAtMs in 0L..60_000L
+                PlaybackPolicy.freshPlaybackLink(android.os.SystemClock.elapsedRealtime(), prefetchedAtMs, 60_000L)
             ) {
                 prefetchedEpisode = null
                 warm.third
@@ -254,10 +254,10 @@ private fun AddisReelApp() {
     fun prepareNextEpisode() {
         val seriesId = selected.id
         val currentEpisode = episode
-        val age = android.os.SystemClock.elapsedRealtime() - prefetchedAtMs
         val currentPrefetch = prefetchedEpisode
         if (seriesId.isNotBlank() && currentEpisode < selected.episodes &&
-            !(currentPrefetch?.first == seriesId && currentPrefetch.second == currentEpisode + 1 && age in 0L..35_000L)) {
+            !(currentPrefetch?.first == seriesId && currentPrefetch.second == currentEpisode + 1 &&
+                PlaybackPolicy.freshPlaybackLink(android.os.SystemClock.elapsedRealtime(), prefetchedAtMs, 35_000L))) {
             appScope.launch {
                 val refreshed = runCatching {
                     withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
@@ -335,7 +335,7 @@ private fun AddisReelApp() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Watched $watchedCount · Continue at EP $lastReached", color = Color.LightGray, fontSize = 12.sp)
                         Spacer(Modifier.weight(1f))
-                        Text("${(watchedCount * 100 / selected.episodes.coerceAtLeast(1))}%", color = Gold, fontSize = 12.sp)
+                        Text("${PlaybackPolicy.completedPercent(watchedCount, selected.episodes)}%", color = Gold, fontSize = 12.sp)
                     }
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
@@ -441,8 +441,8 @@ private fun AddisReelApp() {
                                 Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, hasNextEpisode = episode < selected.episodes, autoPlayNext = autoNextEnabled, onAutoNextToggle = {
                                     autoNextEnabled = !autoNextEnabled
                                     preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
-                                }, onPlaybackUrlExpired = {
-                                    if (selected.id.isNotBlank() && tokenRefreshAttempts < 1) {
+                                }, onPlaybackUrlExpired = { status ->
+                                    if (selected.id.isNotBlank() && PlaybackPolicy.canRefreshRejectedLink(status, tokenRefreshAttempts)) {
                                         tokenRefreshAttempts += 1
                                         streamRefresh += 1
                                     }
@@ -969,7 +969,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPlaybackUrlExpired: () -> Unit, onPrepareNext: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPlaybackUrlExpired: (Int) -> Unit, onPrepareNext: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -1207,7 +1207,7 @@ private fun AddisReelApp() {
                 // Expired signed MP4/HLS URLs cannot be fixed by repeatedly
                 // retrying the same URL: fetch a fresh link once instead.
                 val httpStatus = (error.cause as? HttpDataSource.InvalidResponseCodeException)?.responseCode
-                if (httpStatus == 401 || httpStatus == 403) currentOnPlaybackUrlExpired()
+                if (httpStatus == 401 || httpStatus == 403) currentOnPlaybackUrlExpired(httpStatus)
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
                 if (failurePositionMs > 0L) {
                     preferences.edit().putLong(positionKey, failurePositionMs).apply()
