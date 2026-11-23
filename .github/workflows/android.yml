@@ -6,6 +6,17 @@ on:
     branches: [main]
   workflow_dispatch:
 jobs:
+  live-cloudflare-smoke:
+    if: github.ref == 'refs/heads/feature/android-v080-cinematic-experience'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify deployed catalog, poster fallback and admin protection
+        shell: bash
+        run: bash .github/scripts/live-smoke-v080.sh
+
   catalog-api-check:
     runs-on: ubuntu-latest
     permissions:
