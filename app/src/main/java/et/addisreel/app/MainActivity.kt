@@ -772,7 +772,7 @@ private fun AddisReelApp() {
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                 val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
                                     item {
                                 ElevatedCard(
@@ -799,7 +799,7 @@ private fun AddisReelApp() {
                             }
                                     }
 
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Text("Stories for you", fontSize = 21.sp, fontWeight = FontWeight.Bold)
