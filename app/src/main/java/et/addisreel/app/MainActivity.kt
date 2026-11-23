@@ -806,6 +806,41 @@ private fun AddisReelApp() {
                             }
                                     }
 
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                            Row(
+                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
+                                                    .forEach { drama ->
+                                                        val resume = preferences.getInt("episode_" + drama.title, 1)
+                                                            .coerceIn(1, drama.episodes)
+                                                        ElevatedCard(
+                                                            onClick = { selectDrama(drama); tab = 0 },
+                                                            colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF302536)),
+                                                            modifier = Modifier.width(180.dp)
+                                                        ) {
+                                                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
+                                                                val completedCount = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
+                                                                LinearProgressIndicator(
+                                                                    progress = { completedCount.coerceIn(0, drama.episodes).toFloat() / drama.episodes.coerceAtLeast(1) },
+                                                                    modifier = Modifier.fillMaxWidth().height(3.dp),
+                                                                    color = Gold,
+                                                                    trackColor = Color(0xFF34343B)
+                                                                )
+                                                                Text("$completedCount / ${drama.episodes} watched · Resume", fontSize = 11.sp, color = Color.LightGray)
+                                                            }
+                                                        }
+                                                    }
+                                            }
+                                        }
+                                    }
+                                }
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -877,41 +912,6 @@ private fun AddisReelApp() {
                                                         }
                                                     }
                                                 }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
-                                    item {
-                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
-                                            Row(
-                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
-                                                    .forEach { drama ->
-                                                        val resume = preferences.getInt("episode_" + drama.title, 1)
-                                                            .coerceIn(1, drama.episodes)
-                                                        ElevatedCard(
-                                                            onClick = { selectDrama(drama); tab = 0 },
-                                                            colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF302536)),
-                                                            modifier = Modifier.width(180.dp)
-                                                        ) {
-                                                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                                Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
-                                                                val completedCount = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
-                                                                LinearProgressIndicator(
-                                                                    progress = { completedCount.coerceIn(0, drama.episodes).toFloat() / drama.episodes.coerceAtLeast(1) },
-                                                                    modifier = Modifier.fillMaxWidth().height(3.dp),
-                                                                    color = Gold,
-                                                                    trackColor = Color(0xFF34343B)
-                                                                )
-                                                                Text("$completedCount / ${drama.episodes} watched · Resume", fontSize = 11.sp, color = Color.LightGray)
-                                                            }
-                                                        }
-                                                    }
                                             }
                                         }
                                     }
