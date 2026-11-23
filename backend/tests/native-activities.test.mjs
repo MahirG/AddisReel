@@ -68,7 +68,7 @@ test("Invalid multipart sessions can restart without losing chosen episode and f
   const engine=java("UploadEngine"),store=java("UploadStore");
   assert.match(engine,/UploadStore\.resetMultipartSession\(app\)/);
   assert.match(engine,/Upload session reset\. Tap Resume/);
-  assert.match(engine,/return false;\s*}\s*UploadStore\.changeState/);
+  assert.match(engine,/return false;\s*}\s*JSONObject persisted=UploadStore\.read\(app\)/);
   assert.match(store,/static synchronized void resetMultipartSession/);
   assert.match(store,/current\.remove\("uploadId"\)/);
   assert.match(store,/current\.put\("confirmedBytes",0\)/);
