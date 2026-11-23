@@ -19,11 +19,15 @@ final class ActivityJournal {
         if(id==null||id.isEmpty()||state==null)return;
         String safeTitle=limit(title,90),safeDetail=limit(detail,170);
         JSONArray old=read(ctx),updated=new JSONArray();
+        boolean foundLatest=false;
         for(int i=0;i<old.length()&&updated.length()<LIMIT-1;i++){
             JSONObject e=old.optJSONObject(i);
             if(e==null)continue;
             // Keep a history of meaningful state transitions, not progress spam.
-            if(id.equals(e.optString("id")) && state.equals(e.optString("state")))return;
+            if(id.equals(e.optString("id"))&&!foundLatest){
+                foundLatest=true;
+                if(state.equals(e.optString("state")))return;
+            }
             updated.put(e);
         }
         JSONObject entry=new JSONObject();
