@@ -681,9 +681,13 @@ private fun AddisReelApp() {
                                     drama.genre.contains(discoverQuery.trim(), ignoreCase = true) ||
                                     drama.description.contains(discoverQuery.trim(), ignoreCase = true))
                         }
+                        val favoriteGenres = viewingHistory.mapNotNull { title -> catalog.find { it.title == title }?.genre }
+                            .groupingBy { it }.eachCount()
                         val filtered = when (discoverSort) {
                             "A–Z" -> matches.sortedBy { it.title }
                             "Most episodes" -> matches.sortedByDescending { it.episodes }
+                            "For You" -> matches.sortedWith(compareByDescending<Drama> { favoriteGenres[it.genre] ?: 0 }
+                                .thenByDescending { it.title in saved })
                             "Recently watched" -> matches.sortedWith(compareBy { drama ->
                                 val index = viewingHistory.indexOf(drama.title)
                                 if (index < 0) Int.MAX_VALUE else index
@@ -741,7 +745,7 @@ private fun AddisReelApp() {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 Icon(Icons.Default.Sort, contentDescription = null, tint = Color.LightGray)
-                                listOf("Featured", "A–Z", "Most episodes", "Recently watched").forEach { sort ->
+                                listOf("Featured", "For You", "A–Z", "Most episodes", "Recently watched").forEach { sort ->
                                     FilterChip(
                                         selected = discoverSort == sort,
                                         onClick = { discoverSort = sort },
@@ -813,7 +817,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                item { Text("${filtered.size} dramas", color = Color.LightGray) }
+                                item { Text("${filtered.size} dramas" + if (discoverSort == "For You") " · Based on genres you have watched on this device" else "", color = Color.LightGray) }
                                 if (filtered.isEmpty()) {
                                     item {
                                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
