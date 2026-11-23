@@ -1063,14 +1063,28 @@ private fun AddisReelApp() {
                         }
                     }
                     else -> {
-                        Header("AddisReel Premium")
-                        Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                            Icon(Icons.Default.Diamond,null,Modifier.size(60.dp),tint=Gold)
-                            Text("Unlock more Ethiopian stories",fontSize=26.sp,fontWeight=FontWeight.Bold)
-                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.",color=Color.LightGray)
-                            Card { Column(Modifier.padding(20.dp)) { Text("Coming soon",color=Gold,fontWeight=FontWeight.Bold); Text("telebirr • Ethiopian banks • local payment gateway") } }
-                            HorizontalDivider()
+                        // Keep the updater reachable on short screens and at large font sizes.
+                        // The bottom navigation remains outside this independently scrollable pane.
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text("AddisReel Premium", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            // Updates are essential app maintenance, not a premium purchase.
+                            // Put them first so the install action is visible without scrolling.
                             InAppUpdatePanel()
+                            HorizontalDivider()
+                            Icon(Icons.Default.Diamond, null, Modifier.size(48.dp), tint = Gold)
+                            Text("Unlock more Ethiopian stories", fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 32.sp)
+                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.", color = Color.LightGray, lineHeight = 22.sp)
+                            Card {
+                                Column(Modifier.padding(20.dp)) {
+                                    Text("Coming soon", color = Gold, fontWeight = FontWeight.Bold)
+                                    Text("telebirr • Ethiopian banks • local payment gateway")
+                                }
+                            }
+                            Spacer(Modifier.height(24.dp))
                         }
                     }
                 }
