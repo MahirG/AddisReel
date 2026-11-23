@@ -803,9 +803,16 @@ private fun AddisReelApp() {
                                         Text(featured.title, fontSize = 27.sp, fontWeight = FontWeight.Bold, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
                                         Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = Color(0xFFE4E0E7))
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Icon(Icons.Default.PlayCircleFilled, contentDescription = null, tint = Gold, modifier = Modifier.size(26.dp))
-                                            Text("Watch Episode 1", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                        val featuredResume = preferences.getInt("episode_" + featured.title, 1).coerceIn(1, featured.episodes.coerceAtLeast(1))
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Button(onClick = { selectDrama(featured); tab = 0 }, modifier = Modifier.weight(1f)) {
+                                                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(if (featuredResume > 1) "Resume Episode $featuredResume" else "Start Watching", maxLines = 1)
+                                            }
+                                            OutlinedButton(onClick = { toggleSaved(featured.title) }) {
+                                                Icon(if (featured.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = if (featured.title in saved) "Remove from My List" else "Add to My List")
+                                            }
                                         }
                                         }
                                     }
@@ -816,12 +823,21 @@ private fun AddisReelApp() {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                                TextButton(onClick = { tab = 2; libraryFilter = "History" }) { Text("See all") }
+                                            }
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
+                                                    .distinctBy { it.title }
+                                                    .filter { drama ->
+                                                        val completed = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
+                                                        completed < drama.episodes
+                                                    }
+                                                    .take(12)
                                                     .forEach { drama ->
                                                         val resume = preferences.getInt("episode_" + drama.title, 1)
                                                             .coerceIn(1, drama.episodes)
