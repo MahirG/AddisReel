@@ -45,6 +45,10 @@ final class UploadEngine {
     }
     private JSONObject request(String path,String method,JSONObject payload,byte[] raw)
             throws IOException {
+        return request(path,method,payload,raw,-1,0);
+    }
+    private JSONObject request(String path,String method,JSONObject payload,byte[] raw,
+                               long chunkOffset,long videoSize) throws IOException {
         ensureActive();
         HttpURLConnection http=(HttpURLConnection)new URL(UploadController.URL+path).openConnection();
         http.setConnectTimeout(30000);
@@ -62,7 +66,28 @@ final class UploadEngine {
                 http.setDoOutput(true);
                 http.setRequestProperty("Content-Type",payload!=null?"application/json":"application/octet-stream");
                 http.setFixedLengthStreamingMode(bytes.length);
-                try(OutputStream out=http.getOutputStream()){out.write(bytes);}
+                try(OutputStream out=http.getOutputStream()){
+                    if(raw!=null && chunkOffset>=0 && videoSize>0){
+                        int sent=0;
+                        long lastReport=0L;
+                        while(sent<bytes.length){
+                            ensureActive();
+                            int count=Math.min(64*1024,bytes.length-sent);
+                            out.write(bytes,sent,count);
+                            sent+=count;
+                            long now=System.currentTimeMillis();
+                            if(now-lastReport>=600L||sent==bytes.length){
+                                long provisional=chunkOffset+sent;
+                                // A write is not an R2 acknowledgment. UI labels these bytes
+                                // "sending"; only the returned ETag increments confirmed bytes.
+                                UploadStore.updateSendingBytes(app,provisional);
+                                listener.report("Sending "+(provisional/1048576)+" MB · pending R2 verification",
+                                    (int)Math.min(100,100*provisional/videoSize));
+                                lastReport=now;
+                            }
+                        }
+                    }else out.write(bytes);
+                }
             }
             int status=http.getResponseCode();
             if(status>=300&&status<400)throw new HttpError(status,"Unexpected HTTP redirect");
@@ -181,17 +206,20 @@ final class UploadEngine {
                     }
                     status("Sending part "+n+"/"+total+" to storage · "+(offset/1048576)+" MB verified",
                         (int)(offset*100/size));
+                    UploadStore.updateSendingBytes(app,offset);
                     byte[] chunk=readFully(input,length);
                     String partUrl=base+"?action=part&partNumber="+n+"&uploadId="+url(session);
                     JSONObject done=null;
                     for(int attempt=1;attempt<=4;attempt++){
                         ensureActive();
-                        try{done=request(partUrl,"PUT",null,chunk);break;}
+                        try{done=request(partUrl,"PUT",null,chunk,offset,size);break;}
                         catch(HttpError e){
+                            UploadStore.updateSendingBytes(app,offset);
                             if(e.status==409)throw e;
                             if(e.status<500 && e.status!=408 && e.status!=429)throw e;
                             if(attempt==4)throw e;
                         }catch(IOException e){
+                            UploadStore.updateSendingBytes(app,offset);
                             if(attempt==4)throw e;
                         }
                         status("Retrying part "+n+"/"+total+" · attempt "+(attempt+1)+"/4",
@@ -248,10 +276,14 @@ final class UploadEngine {
                     "Upload session reset · Reopen Studio and tap Resume",0,false);
                 return false;
             }
+            JSONObject persisted=UploadStore.read(app);
+            if(persisted!=null)UploadStore.updateSendingBytes(app,persisted.optLong("confirmedBytes"));
             UploadStore.changeState(app,error.status==401?"signin":"error",error.getMessage());
             UploadNotice.update(app,"Upload stopped: "+error.getMessage(),0,false);
             return error.status>=500||error.status==408||error.status==429;
         }catch(Exception error){
+            JSONObject persisted=UploadStore.read(app);
+            if(persisted!=null)UploadStore.updateSendingBytes(app,persisted.optLong("confirmedBytes"));
             UploadStore.changeState(app,"interrupted",error.getMessage()==null?"Connection interrupted":error.getMessage());
             UploadNotice.update(app,"Upload interrupted — tap Resume in Studio",0,false);
             return true;
