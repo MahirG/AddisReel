@@ -44,6 +44,21 @@ internal object PlaybackPolicy {
         return ((watchedCount + partial) / episodeCount).toFloat().coerceIn(0f, 1f)
     }
 
+    /**
+     * Continue from the saved episode if unfinished; otherwise skip finished episodes.
+     * When a series is fully completed, Watch Again starts from episode 1.
+     */
+    fun resumeEpisode(savedEpisode: Int, episodeCount: Int, watchedEpisodes: Set<String>): Int {
+        if (episodeCount <= 0) return 1
+        val saved = savedEpisode.coerceIn(1, episodeCount)
+        if (saved.toString() !in watchedEpisodes) return saved
+        for (offset in 1 until episodeCount) {
+            val next = ((saved - 1 + offset) % episodeCount) + 1
+            if (next.toString() !in watchedEpisodes) return next
+        }
+        return 1
+    }
+
     fun canRefreshRejectedLink(httpCode: Int?, attempts: Int): Boolean =
         (httpCode == 401 || httpCode == 403) && attempts < 1
 }
