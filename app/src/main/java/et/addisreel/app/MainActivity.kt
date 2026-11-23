@@ -11,6 +11,7 @@ import java.net.URL
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.Lifecycle
@@ -39,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.size.Precision
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -240,6 +242,23 @@ private fun AddisReelApp() {
             val restored = remote.find { it.title == recentlyWatched } ?: remote.first()
             selected = restored
             episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
+        }
+    }
+    // Warm only the first few visible posters, and only on unmetered connectivity.
+    // The request cache is shared with AsyncImage; cancelling Home cancels pending work.
+    LaunchedEffect(catalog, tab, homeSearchExpanded) {
+        if (tab == 1 && !homeSearchExpanded && catalog.isNotEmpty()) {
+            delay(400L) // Give the featured hero priority over below-the-fold artwork.
+            val network = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            if (!network.isActiveNetworkMetered) {
+                val warmups = catalog.drop(1).take(3).mapNotNull { it.posterUrl }.map { poster ->
+                    context.imageLoader.enqueue(
+                        ImageRequest.Builder(context).data(poster).size(540, 810)
+                            .precision(Precision.INEXACT).build()
+                    )
+                }
+                try { awaitCancellation() } finally { warmups.forEach { it.dispose() } }
+            }
         }
     }
     var streamRefresh by remember { mutableIntStateOf(0) }
