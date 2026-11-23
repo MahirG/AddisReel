@@ -82,6 +82,32 @@ async function serveR2(env, key, path, request) {
   }
   return new Response(object.body,{headers});
 }
+// Verify the complete adaptive HLS graph before exposing a processed episode.
+async function verifyHlsPackage(env, prefix) {
+  const manifest = await env.MEDIA.get(prefix + "/master.m3u8");
+  if (!manifest) return "HLS master playlist missing";
+  if (manifest.size > 1024 * 1024) return "HLS master playlist too large";
+  const master = await manifest.text();
+  if (!master.startsWith("#EXTM3U")) return "Invalid HLS master header";
+  const children = master.split(/\r?\n/).map(v => v.trim()).filter(v => v && !v.startsWith("#"));
+  if (!children.length || children.length > 8) return "Invalid HLS rendition count";
+  for (const path of children) {
+    if (!fileOK(path) || !path.endsWith(".m3u8")) return "Unsafe HLS rendition path";
+    const playlist = await env.MEDIA.get(prefix + "/" + path);
+    if (!playlist || playlist.size > 1024 * 1024) return "HLS rendition missing or too large";
+    const text = await playlist.text();
+    if (!text.startsWith("#EXTM3U") || !text.includes("#EXT-X-ENDLIST")) return "Incomplete HLS rendition";
+    const segments = text.split(/\r?\n/).map(v => v.trim()).filter(v => v && !v.startsWith("#"));
+    if (!segments.length || segments.length > 20000) return "Invalid HLS segment count";
+    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/") + 1) : "";
+    for (const segment of segments) {
+      const local = folder + segment;
+      if (!fileOK(segment) || !fileOK(local) || local.endsWith(".m3u8")) return "Unsafe HLS segment path";
+      if (!(await env.MEDIA.head(prefix + "/" + local))) return "Missing HLS segment";
+    }
+  }
+  return null;
+}
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -223,6 +249,47 @@ export default {
           ).first();
           return reply({job:claimed || null},200,false);
         }
+        // Workers cannot execute FFmpeg; the external runner downloads and
+        // uploads through short, authenticated, same-worker streams.
+        const source = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})\/source$/.exec(path);
+        if (request.method === "GET" && source) {
+          const job = await env.DB.prepare(
+            "SELECT source_key FROM video_processing_jobs WHERE id=? AND status='processing'"
+          ).bind(source[1]).first();
+          if (!job) return fail("Job is not processing",409,false);
+          const object = await env.MEDIA.get(job.source_key);
+          if (!object) return fail("Source MP4 missing",404,false);
+          return new Response(object.body,{headers:{
+            "Content-Type":"video/mp4","Content-Length":String(object.size),
+            "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"
+          }});
+        }
+        const output = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})\/files\/(.+)$/.exec(path);
+        if (request.method === "PUT" && output) {
+          let file;
+          try { file = decodeURIComponent(output[2]); }
+          catch { return fail("Invalid output path",400,false); }
+          if (!fileOK(file) || file === "source.mp4")
+            return fail("Invalid processed HLS path",400,false);
+          const expected = request.headers.get("X-Upload-SHA256");
+          if (!uploadSha256(expected)) return fail("SHA-256 required",400,false);
+          const job = await env.DB.prepare(
+            "SELECT source_key FROM video_processing_jobs WHERE id=? AND status='processing'"
+          ).bind(output[1]).first();
+          if (!job) return fail("Job is not processing",409,false);
+          if (Number(request.headers.get("Content-Length") || 0) > 16*1024*1024)
+            return fail("HLS file too large",413,false);
+          const bytes = await request.arrayBuffer();
+          if (!bytes.byteLength || bytes.byteLength > 16*1024*1024)
+            return fail("HLS file must be 1-16MB",413,false);
+          if ((await digestUpload(bytes)) !== expected)
+            return fail("Upload checksum mismatch",422,false);
+          const prefix = job.source_key.slice(0,-"/source.mp4".length);
+          await env.MEDIA.put(prefix + "/" + file, bytes, {
+            httpMetadata:{contentType:extType(file)},customMetadata:{sha256:expected}
+          });
+          return reply({uploaded:true,bytes:bytes.byteLength,sha256:expected},200,false);
+        }
         const update = /^\/v1\/processor\/jobs\/([a-f0-9-]{36})$/.exec(path);
         if (request.method === "PATCH" && update) {
           const d = await inputJSON(request);
@@ -237,8 +304,8 @@ export default {
             ).bind(update[1]).first();
             if (!job) return fail("Job is not processing",409,false);
             const prefix = job.source_key.slice(0,-"/source.mp4".length);
-            if (!await env.MEDIA.head(prefix + "/master.m3u8"))
-              return fail("Cannot mark ready without HLS master playlist",409,false);
+            const invalid = await verifyHlsPackage(env,prefix);
+            if (invalid) return fail("Cannot mark ready: " + invalid,409,false);
           }
           const changed = await env.DB.prepare(
             "UPDATE video_processing_jobs SET status=?,progress=?,error_message=?,updated_at=datetime('now') " +
