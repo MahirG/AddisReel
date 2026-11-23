@@ -52,6 +52,16 @@ class PlaybackPolicyTest {
         assertTrue(PlaybackPolicy.isFullyWatched(setOf("1","2","99"),2))
     }
 
+    @Test fun continueWatchingSkipsFinishedEpisodesAndPreservesActiveResume() {
+        assertEquals(2, PlaybackPolicy.resumeEpisode(1, 6, setOf("1")))
+        assertEquals(4, PlaybackPolicy.resumeEpisode(4, 6, setOf("1", "2")))
+        assertEquals(1, PlaybackPolicy.resumeEpisode(4, 6, setOf("4", "5", "6")))
+        assertEquals(3, PlaybackPolicy.resumeEpisode(7, 3, setOf("1", "2")))
+        assertEquals(1, PlaybackPolicy.resumeEpisode(3, 3, setOf("1", "2", "3")))
+        assertEquals(1, PlaybackPolicy.resumeEpisode(0, 0, emptySet()))
+        assertEquals(1, PlaybackPolicy.resumeEpisode(-5, 4, emptySet()))
+    }
+
     @Test fun progressIncludesPartialEpisodeWithoutCountingItTwice() {
         assertEquals(0.25f, PlaybackPolicy.seriesProgress(setOf("1"),4,2,0L,120_000L),0.001f)
         assertEquals(0.375f, PlaybackPolicy.seriesProgress(setOf("1"),4,2,60_000L,120_000L),0.001f)
