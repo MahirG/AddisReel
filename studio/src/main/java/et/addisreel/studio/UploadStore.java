@@ -64,6 +64,13 @@ final class UploadStore {
         catch(Exception ignored){}
         save(context,current);
     }
+    static synchronized void updateConfirmedBytes(Context context,long bytes) {
+        JSONObject current=read(context);
+        if(current==null||"paused".equals(current.optString("state")))return;
+        try{current.put("confirmedBytes",Math.max(0,bytes));}
+        catch(Exception ignored){}
+        save(context,current);
+    }
     static synchronized void clear(Context context){
         context.getSharedPreferences(PREF,Context.MODE_PRIVATE).edit().remove(KEY).commit();
     }
