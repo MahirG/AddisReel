@@ -354,9 +354,22 @@ private fun AddisReelApp() {
             }
         }
         Scaffold(containerColor=Dark, bottomBar={
-            if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF141419)) {
+            if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF101014), tonalElevation=0.dp) {
                 listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
-                    NavigationBarItem(selected=tab==index,onClick={tab=index},icon={Icon(icon,contentDescription=name)},label={Text(name)},colors=NavigationBarItemDefaults.colors(selectedIconColor=Gold,selectedTextColor=Gold,indicatorColor=Color(0xFF333027)))
+                    NavigationBarItem(
+                        selected=tab==index,
+                        onClick={tab=index},
+                        icon={Icon(icon,contentDescription=name)},
+                        label={Text(name, fontSize=11.sp, fontWeight=if(tab==index) FontWeight.SemiBold else FontWeight.Normal)},
+                        alwaysShowLabel=false,
+                        colors=NavigationBarItemDefaults.colors(
+                            selectedIconColor=Dark,
+                            selectedTextColor=Gold,
+                            unselectedIconColor=Color(0xFF96949E),
+                            unselectedTextColor=Color(0xFF96949E),
+                            indicatorColor=Gold
+                        )
+                    )
                 }
             }
         }) { padding ->
