@@ -39,7 +39,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -168,6 +172,7 @@ private fun AddisReelApp() {
     var speedMenuExpanded by remember { mutableStateOf(false) }
     var autoNextEnabled by remember { mutableStateOf(preferences.getBoolean("cinema_auto_next", true)) }
     var discoverQuery by remember { mutableStateOf("") }
+    var homeSearchExpanded by remember { mutableStateOf(false) }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
     var discoverOnlySaved by remember { mutableStateOf(false) }
@@ -683,8 +688,19 @@ private fun AddisReelApp() {
                         }
                     }
                     1 -> {
-                        Header("AddisReel")
-                        if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text("AddisReel", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Gold)
+                                Text("Big emotions. Short episodes.", fontSize = 12.sp, color = Color.LightGray, lineHeight = 18.sp)
+                            }
+                            IconButton(onClick = {
+                                homeSearchExpanded = !homeSearchExpanded
+                                if (!homeSearchExpanded) { discoverQuery = ""; discoverGenre = "All"; discoverSort = "Featured"; discoverOnlySaved = false; discoverOnlyUnwatched = false }
+                            }) {
+                                Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
+                            }
+                        }
+                        if (!remoteCatalogAvailable) Text("Explore upcoming stories · Episodes will appear when available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (!discoverOnlySaved || drama.title in saved) &&
@@ -709,11 +725,11 @@ private fun AddisReelApp() {
                             else -> matches
                         }
                         Column(Modifier.fillMaxSize()) {
-                            OutlinedTextField(
+                            if (homeSearchExpanded) OutlinedTextField(
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                                label = { Text("Search Ethiopian dramas") },
+                                label = { Text("Find your next favorite story") },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                 singleLine = true,
                                 trailingIcon = {
@@ -724,7 +740,7 @@ private fun AddisReelApp() {
                                     }
                                 }
                             )
-                            Row(
+                            if (homeSearchExpanded) Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -736,7 +752,7 @@ private fun AddisReelApp() {
                                     )
                                 }
                             }
-                            Row(
+                            if (homeSearchExpanded) Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -751,7 +767,7 @@ private fun AddisReelApp() {
                                     )
                                 }
                             }
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (homeSearchExpanded) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FilterChip(selected = discoverOnlySaved, onClick = { discoverOnlySaved = !discoverOnlySaved }, label = { Text("Saved only") })
                                 FilterChip(selected = discoverOnlyUnwatched, onClick = { discoverOnlyUnwatched = !discoverOnlyUnwatched }, label = { Text("Not completed") })
                                 if (discoverOnlySaved || discoverOnlyUnwatched) TextButton(onClick = { discoverOnlySaved = false; discoverOnlyUnwatched = false }) { Text("Reset") }
@@ -760,8 +776,12 @@ private fun AddisReelApp() {
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
-                                val featured = catalog.firstOrNull { it.id.isNotBlank() } ?: catalog.first()
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                val preferredGenre = favoriteGenres.maxByOrNull { it.value }?.key
+                                val featured = catalog.firstOrNull { it.id.isNotBlank() && it.genre == preferredGenre }
+                                    ?: catalog.firstOrNull { it.id.isNotBlank() && it.title in saved }
+                                    ?: catalog.firstOrNull { it.id.isNotBlank() }
+                                    ?: catalog.first()
                                     item {
                                 ElevatedCard(
                                     onClick = { selectDrama(featured); tab = 0 },
@@ -771,101 +791,28 @@ private fun AddisReelApp() {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF211A2B))) {
                                             if (featured.posterUrl != null) {
-                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                placeholder = ColorPainter(Color(0xFF34243A)),
+                                                error = ColorPainter(Color(0xFF34243A)))
                                             }
                                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF29202C)))))
                                             Text("FEATURED DRAMA", modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                         }
                                         Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                        Text(featured.title, fontSize = 27.sp, fontWeight = FontWeight.Bold, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
-                                        Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text("▶  Watch now", color = Gold, fontWeight = FontWeight.SemiBold)
+                                        Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = Color(0xFFE4E0E7))
+                                        Text("▶  Start Watching", color = Gold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
                             }
                                     }
 
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
-                                    item {
-                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Stories for you", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                                            Text("Ethiopian short dramas · Tap a poster to watch", fontSize = 12.sp, color = Color.LightGray)
-                                            Row(
-                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                            ) {
-                                                catalog.sortedWith(compareByDescending<Drama> { favoriteGenres[it.genre] ?: 0 }
-                                                    .thenByDescending { it.title in saved }).take(10).forEach { drama ->
-                                                    Card(
-                                                        onClick = { selectDrama(drama); tab = 0 },
-                                                        modifier = Modifier.width(142.dp),
-                                                        shape = RoundedCornerShape(16.dp),
-                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B29))
-                                                    ) {
-                                                        Column {
-                                                            Box(Modifier.fillMaxWidth().height(198.dp).background(Color(0xFF34243A))) {
-                                                                if (drama.posterUrl != null) {
-                                                                    AsyncImage(
-                                                                        model = drama.posterUrl,
-                                                                        contentDescription = "Poster for " + drama.title,
-                                                                        contentScale = ContentScale.Crop,
-                                                                        modifier = Modifier.fillMaxSize()
-                                                                    )
-                                                                } else {
-                                                                    Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(48.dp))
-                                                                }
-                                                                Text(
-                                                                    "${drama.episodes} EP",
-                                                                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                                                                        .background(Color(0xCC141018), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
-                                                                    fontSize = 10.sp, color = Color.White
-                                                                )
-                                                            }
-                                                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                                Text(drama.genre, fontSize = 11.sp, color = Gold)
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
-                                    item {
-                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Explore more dramas", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                                catalog.asReversed().take(10).forEach { drama ->
-                                                    Card(
-                                                        onClick = { detailDrama = drama },
-                                                        modifier = Modifier.width(130.dp),
-                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B29)),
-                                                        shape = RoundedCornerShape(14.dp)
-                                                    ) {
-                                                        Column {
-                                                            Box(Modifier.fillMaxWidth().height(178.dp).background(Color(0xFF34243A))) {
-                                                                if (drama.posterUrl != null) {
-                                                                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                                                } else {
-                                                                    Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(42.dp))
-                                                                }
-                                                            }
-                                                            Text(drama.title, modifier = Modifier.padding(10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && viewingHistory.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            Text("Continue Watching", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                            Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -897,7 +844,86 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                if (discoverQuery.isBlank() && discoverGenre == "All") {
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text("Picked for You", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                            Text("Stories selected from what you love watching", fontSize = 13.sp, color = Color.LightGray, lineHeight = 19.sp)
+                                            Row(
+                                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                            ) {
+                                                catalog.sortedWith(compareByDescending<Drama> { favoriteGenres[it.genre] ?: 0 }
+                                                    .thenByDescending { it.title in saved }).take(10).forEach { drama ->
+                                                    Card(
+                                                        onClick = { selectDrama(drama); tab = 0 },
+                                                        modifier = Modifier.width(142.dp),
+                                                        shape = RoundedCornerShape(16.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B29))
+                                                    ) {
+                                                        Column {
+                                                            Box(Modifier.fillMaxWidth().height(198.dp).background(Color(0xFF34243A))) {
+                                                                if (drama.posterUrl != null) {
+                                                                    AsyncImage(
+                                                                        model = drama.posterUrl,
+                                                                        contentDescription = "Poster for " + drama.title,
+                                                                        contentScale = ContentScale.Crop,
+                                                                        modifier = Modifier.fillMaxSize(),
+                                                                        placeholder = ColorPainter(Color(0xFF34243A)),
+                                                                        error = ColorPainter(Color(0xFF34243A))
+                                                                    )
+                                                                } else {
+                                                                    Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(48.dp))
+                                                                }
+                                                                Text(
+                                                                    "${drama.episodes} EP",
+                                                                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+                                                                        .background(Color(0xCC141018), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
+                                                                    fontSize = 10.sp, color = Color.White
+                                                                )
+                                                            }
+                                                            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text(drama.genre, fontSize = 11.sp, color = Gold)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
+                                    item {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Text("More Stories to Love", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                                catalog.asReversed().take(10).forEach { drama ->
+                                                    Card(
+                                                        onClick = { detailDrama = drama },
+                                                        modifier = Modifier.width(130.dp),
+                                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF211B29)),
+                                                        shape = RoundedCornerShape(14.dp)
+                                                    ) {
+                                                        Column {
+                                                            Box(Modifier.fillMaxWidth().height(178.dp).background(Color(0xFF34243A))) {
+                                                                if (drama.posterUrl != null) {
+                                                                    AsyncImage(model = drama.posterUrl, contentDescription = "Poster for " + drama.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                                                                    placeholder = ColorPainter(Color(0xFF34243A)),
+                                                                    error = ColorPainter(Color(0xFF34243A)))
+                                                                } else {
+                                                                    Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(42.dp))
+                                                                }
+                                                            }
+                                                            Text(drama.title, modifier = Modifier.padding(10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                     item {
                                         Card(
                                             onClick = { detailDrama = catalog.first() },
@@ -917,14 +943,14 @@ private fun AddisReelApp() {
                                         }
                                     }
                                 }
-                                item { Text("${filtered.size} dramas" + if (discoverSort == "For You") " · Based on genres you have watched on this device" else "", color = Color.LightGray) }
+                                item { Text((if (homeSearchExpanded) "Search results · " else "All dramas · ") + "${filtered.size} titles" + if (discoverSort == "For You") " · Personalized on this device" else "", color = Color.LightGray) }
                                 if (filtered.isEmpty()) {
                                     item {
                                         Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(Icons.Default.SearchOff, contentDescription = null, tint = Gold, modifier = Modifier.size(44.dp))
                                             Spacer(Modifier.height(12.dp))
-                                            Text("No dramas found", fontWeight = FontWeight.Bold)
-                                            Text("Try another title or genre", color = Color.LightGray)
+                                            Text("No stories found", fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp)
+                                            Text("Try a different title, genre, or filter.", color = Color.LightGray, fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center)
                                             TextButton(onClick = { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false; discoverSort = "Featured" }) { Text("Clear filters") }
                                         }
                                     }
@@ -1004,8 +1030,8 @@ private fun AddisReelApp() {
                             ) {
                                 Icon(if (libraryFilter == "History") Icons.Default.History else if (libraryFilter == "Completed") Icons.Default.CheckCircle else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
                                 Text(when (libraryFilter) { "History" -> "No recently watched dramas"; "Completed" -> "No completed dramas yet"; else -> "Your collection starts here" }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text(when (libraryFilter) { "History" -> "Your recently opened dramas will appear here."; "Completed" -> "Finish every episode of a drama to see it here."; else -> "Save Ethiopian dramas to find them here later." }, color = Color.LightGray)
-                                Button(onClick = { tab = 1 }) { Text("Explore dramas") }
+                                Text(when (libraryFilter) { "History" -> "Stories you start watching will appear here."; "Completed" -> "Complete a series to add it to your finished stories."; else -> "Bookmark the stories you love and return anytime." }, color = Color.LightGray)
+                                Button(onClick = { tab = 1 }) { Text("Discover Stories") }
                             }
                         } else {
                             LazyColumn(
@@ -1037,14 +1063,28 @@ private fun AddisReelApp() {
                         }
                     }
                     else -> {
-                        Header("AddisReel Premium")
-                        Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
-                            Icon(Icons.Default.Diamond,null,Modifier.size(60.dp),tint=Gold)
-                            Text("Unlock more Ethiopian stories",fontSize=26.sp,fontWeight=FontWeight.Bold)
-                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.",color=Color.LightGray)
-                            Card { Column(Modifier.padding(20.dp)) { Text("Coming soon",color=Gold,fontWeight=FontWeight.Bold); Text("telebirr • Ethiopian banks • local payment gateway") } }
-                            HorizontalDivider()
+                        // Keep the updater reachable on short screens and at large font sizes.
+                        // The bottom navigation remains outside this independently scrollable pane.
+                        Column(
+                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp, vertical = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Text("AddisReel Premium", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            // Updates are essential app maintenance, not a premium purchase.
+                            // Put them first so the install action is visible without scrolling.
                             InAppUpdatePanel()
+                            HorizontalDivider()
+                            Icon(Icons.Default.Diamond, null, Modifier.size(48.dp), tint = Gold)
+                            Text("Unlock more Ethiopian stories", fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 32.sp)
+                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.", color = Color.LightGray, lineHeight = 22.sp)
+                            Card {
+                                Column(Modifier.padding(20.dp)) {
+                                    Text("Coming soon", color = Gold, fontWeight = FontWeight.Bold)
+                                    Text("telebirr • Ethiopian banks • local payment gateway")
+                                }
+                            }
+                            Spacer(Modifier.height(24.dp))
                         }
                     }
                 }
@@ -1249,6 +1289,7 @@ private fun AddisReelApp() {
     var playbackError by remember(url, episodeKey) { mutableStateOf(false) }
     var retryCount by remember(url, episodeKey) { mutableIntStateOf(0) }
     var retryPending by remember(url, episodeKey) { mutableStateOf(false) }
+    var credentialRejected by remember(url, episodeKey) { mutableStateOf(false) }
     var failurePositionMs by remember(url, episodeKey) {
         mutableLongStateOf(preferences.getLong(positionKey, 0L))
     }
@@ -1282,7 +1323,7 @@ private fun AddisReelApp() {
     // ExoPlayer can remain in BUFFERING without emitting an error on weak
     // connections. Detect a prolonged stall and use the same bounded retry path.
     LaunchedEffect(buffering, isOnline, inForeground, playbackError, player) {
-        if (buffering && isOnline && inForeground && player.playWhenReady && !playbackError) {
+        if (buffering && isOnline && inForeground && player.playWhenReady && !playbackError && !credentialRejected) {
             delay(15_000L)
             if (player.playWhenReady && player.playbackState == Player.STATE_BUFFERING && !playbackError) {
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
@@ -1347,7 +1388,7 @@ private fun AddisReelApp() {
         }
     }
     LaunchedEffect(playbackError, retryCount, isOnline, inForeground, player) {
-        if (playbackError && isOnline && inForeground && retryCount < 3) {
+        if (playbackError && isOnline && inForeground && !credentialRejected && retryCount < 3) {
             retryPending = true
             // Back off repeated failures; never spin endlessly on a bad stream.
             delay(when (retryCount) { 0 -> 800L; 1 -> 2000L; else -> 4000L })
@@ -1374,6 +1415,7 @@ private fun AddisReelApp() {
                 if (state == Player.STATE_READY) {
                     retryCount = 0
                     playbackError = false
+                    credentialRejected = false
                     // A replayed episode must save its position again if interrupted.
                     if (completed && player.currentPosition < 1000L) completed = false
                 }
@@ -1389,7 +1431,10 @@ private fun AddisReelApp() {
                 val httpStatus = generateSequence(error as Throwable?) { it.cause }
                     .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
                     .firstOrNull()?.responseCode
-                if (httpStatus == 401 || httpStatus == 403) currentOnPlaybackUrlExpired(httpStatus)
+                if (httpStatus == 401 || httpStatus == 403) {
+                    credentialRejected = true
+                    currentOnPlaybackUrlExpired(httpStatus)
+                }
                 failurePositionMs = player.currentPosition.coerceAtLeast(0L)
                 if (failurePositionMs > 0L) {
                     preferences.edit().putLong(positionKey, failurePositionMs).apply()
@@ -1450,12 +1495,12 @@ private fun AddisReelApp() {
             },
             modifier = Modifier.fillMaxSize()
         )
-        if (showBuffering && buffering && !playbackError) {
+        if (showBuffering && buffering && !playbackError && inForeground) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(color = Gold)
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    if (isOnline) "Preparing your episode…" else "Internet disconnected — waiting to reconnect",
+                    if (isOnline) "Buffering your episode…" else "Waiting for an internet connection…",
                     color = Color.White,
                     fontSize = 13.sp
                 )
@@ -1509,7 +1554,8 @@ private fun AddisReelApp() {
             ) {
                 Text(
                     when {
-                        !isOnline -> "You're offline. Playback will retry when internet returns."
+                        !isOnline -> "You're offline. Playback will resume when your connection returns." 
+                        credentialRejected -> "Your viewing session expired. Refreshing the episode link…"
                         !inForeground -> "Playback paused in the background"
                         retryPending -> "Connection interrupted — reconnecting…"
                         retryCount >= 3 -> "Can't play right now. Check your connection and try again."
@@ -1520,7 +1566,7 @@ private fun AddisReelApp() {
                 Spacer(Modifier.height(8.dp))
                 if (retryPending && isOnline) {
                     CircularProgressIndicator(color = Gold, modifier = Modifier.size(24.dp))
-                } else if (isOnline && inForeground) {
+                } else if (isOnline && inForeground && !credentialRejected) {
                     Button(onClick = {
                         retryCount = 0
                         failurePositionMs = player.currentPosition.coerceAtLeast(failurePositionMs)
