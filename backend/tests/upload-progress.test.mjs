@@ -59,7 +59,7 @@ function harness({ resumable = new Set(), jobs = [] } = {}) {
     crypto: webcrypto, Blob, console, Date,
     fetch: async (route) => {
       if(String(route).includes("/status?")) {
-        const path=String(route).split("?")[0],size=Number(new URL("https://example.test"+route).searchParams.get("size"));
+        const path=String(route).split("?")[0].replace(/\/status$/,""),size=Number(new URL("https://example.test"+route).searchParams.get("size"));
         statusRequests.push(route);
         return {ok:true,status:200,json:async()=>({uploaded:resumable.has(path),bytes:resumable.has(path)?size:0})};
       }
