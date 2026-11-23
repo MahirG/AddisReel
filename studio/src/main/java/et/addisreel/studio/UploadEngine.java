@@ -155,6 +155,7 @@ final class UploadEngine {
                 JSONObject begun=request(base+"?action=start","POST",
                         data("size",size,"name",filename),null);
                 session=begun.getString("uploadId");
+                if(session.isEmpty())throw new IOException("Cloudflare did not return an upload session");
                 state.put("uploadId",session);
                 state.put("partSize",begun.getInt("partSize"));
                 state.put("parts",new JSONArray());
@@ -178,6 +179,8 @@ final class UploadEngine {
                         status("Resuming saved video chunks…",(int)((offset+length)*100/size));
                         continue;
                     }
+                    status("Sending part "+n+"/"+total+" to storage · "+(offset/1048576)+" MB verified",
+                        (int)(offset*100/size));
                     byte[] chunk=readFully(input,length);
                     String partUrl=base+"?action=part&partNumber="+n+"&uploadId="+url(session);
                     JSONObject done=null;
@@ -191,6 +194,8 @@ final class UploadEngine {
                         }catch(IOException e){
                             if(attempt==4)throw e;
                         }
+                        status("Retrying part "+n+"/"+total+" · attempt "+(attempt+1)+"/4",
+                            (int)(offset*100/size));
                         try{Thread.sleep(attempt*1500L);}catch(InterruptedException e){
                             Thread.currentThread().interrupt();
                             throw new InterruptedIOException("Upload interrupted");
@@ -230,13 +235,18 @@ final class UploadEngine {
             // JobScheduler can resume from completed R2 part receipts.
             return true;
         }catch(HttpError error){
-            if(error.status==409 && error.getMessage()!=null &&
-               error.getMessage().toLowerCase(java.util.Locale.ROOT).contains("expired")){
-                JSONObject reset=UploadStore.read(app);
-                if(reset!=null)try{
-                    reset.remove("uploadId");reset.put("parts",new JSONArray());UploadStore.save(app,reset);
-                }catch(Exception ignored){}
-                return true;
+            String reason=error.getMessage()==null?"":error.getMessage().toLowerCase(java.util.Locale.ROOT);
+            if((error.status==400||error.status==409) &&
+               (reason.contains("upload session")||reason.contains("expired"))){
+                // The session is no longer usable. Do not silently retry
+                // the same bad uploadId or reuse its old part receipts.
+                // Keep the episode and URI so one explicit Resume creates a fresh R2 session.
+                UploadStore.resetMultipartSession(app);
+                UploadStore.changeState(app,"error",
+                    "Upload session reset. Tap Resume to retry this video safely.");
+                UploadNotice.update(app,
+                    "Upload session reset · Reopen Studio and tap Resume",0,false);
+                return false;
             }
             UploadStore.changeState(app,error.status==401?"signin":"error",error.getMessage());
             UploadNotice.update(app,"Upload stopped: "+error.getMessage(),0,false);
