@@ -337,7 +337,24 @@ private fun AddisReelApp() {
         saved = updated
         preferences.edit().putStringSet("saved_titles", updated).apply()
     }
+    // Predictable Android Back: exit fullscreen first, then return to Home instead
+    // of closing the app and losing the user's place in the current episode.
     BackHandler(enabled = cinemaMode && tab == 0) { cinemaMode = false }
+    BackHandler(
+        enabled = !cinemaMode && !showEpisodes && detailDrama == null && !confirmClearHistory &&
+            (tab != 1 || homeSearchExpanded)
+    ) {
+        if (tab == 1) {
+            homeSearchExpanded = false
+            discoverQuery = ""
+            discoverGenre = "All"
+            discoverSort = "Featured"
+            discoverOnlySaved = false
+            discoverOnlyUnwatched = false
+        } else {
+            tab = 1
+        }
+    }
     if (confirmClearHistory) {
         AlertDialog(
             onDismissRequest = { confirmClearHistory = false },
