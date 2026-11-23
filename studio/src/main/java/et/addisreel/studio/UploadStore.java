@@ -21,8 +21,30 @@ final class UploadStore {
     static synchronized void changeState(Context context,String state,String message){
         JSONObject value=read(context);
         if(value==null)return;
+        String old=value.optString("state");
         try{value.put("state",state);value.put("message",message);}catch(Exception ignored){}
         save(context,value);
+        if(!state.equals(old)){
+            String id=keyFor(value);
+            ActivityJournal.record(context,id,value.optString("title","Episode "+value.optInt("episodeNumber")),
+                "upload:"+state,message,
+                "done".equals(state)||"error".equals(state)||"signin".equals(state));
+        }
+    }
+    static synchronized void stage(Context context,String stage,String message){
+        JSONObject current=read(context);
+        if(current==null||"paused".equals(current.optString("state")))return;
+        String old=current.optString("stage");
+        try{current.put("stage",stage);current.put("message",message);}
+        catch(Exception ignored){}
+        save(context,current);
+        if(!stage.equals(old)){
+            ActivityJournal.record(context,keyFor(current),current.optString("title","Episode"),
+                "stage:"+stage,message,false);
+        }
+    }
+    private static String keyFor(JSONObject value){
+        return "upload:"+value.optString("seriesId")+"#"+value.optInt("episodeNumber");
     }
     static synchronized void checkpoint(Context context,JSONObject session) throws java.io.IOException {
         JSONObject current=read(context);
