@@ -187,6 +187,15 @@ export default {
               (d.status==="ready" && d.progress!==100) ||
               (d.status==="failed" && (typeof d.error !== "string" || d.error.length>300)))
             return fail("Invalid job state",400,false);
+          if (d.status === "ready") {
+            const job = await env.DB.prepare(
+              "SELECT source_key FROM video_processing_jobs WHERE id=? AND status='processing'"
+            ).bind(update[1]).first();
+            if (!job) return fail("Job is not processing",409,false);
+            const prefix = job.source_key.slice(0,-"/source.mp4".length);
+            if (!await env.MEDIA.head(prefix + "/master.m3u8"))
+              return fail("Cannot mark ready without HLS master playlist",409,false);
+          }
           const changed = await env.DB.prepare(
             "UPDATE video_processing_jobs SET status=?,progress=?,error_message=?,updated_at=datetime('now') " +
             "WHERE id=? AND status='processing'"
