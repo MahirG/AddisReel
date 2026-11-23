@@ -71,15 +71,16 @@ final class ActivityCenter {
     }
     private void open(){
         ActivityJournal.markRead(host);
+        // Keep the live transfer meter pinned when the history is scrolled.
+        LinearLayout dialogRoot=new LinearLayout(host);
+        dialogRoot.setOrientation(LinearLayout.VERTICAL);
+        dialogRoot.setBackground(surface(BG,19));
         ScrollView scroll=new ScrollView(host);
         scroll.setFillViewport(false);
         LinearLayout content=vertical(17);
-        content.setBackground(surface(BG,19));
-        content.addView(text("ADDISREEL  •  LIVE ACTIVITY",11,GOLD));
-        TextView title=text("Your Studio is working",22,WHITE);
-        title.setTypeface(null,1);content.addView(title);
-        content.addView(text("Real operations • Verified progress • Native Android controls",12,MUTED));
+        content.addView(text("ACTIVITY HISTORY • 7-STAGE PROCESSING",11,GOLD));
         LinearLayout active=vertical(12);
+        active.addView(text("ADDISREEL  •  LIVE UPLOAD",11,GOLD));
         active.setBackground(surface(Color.rgb(35,31,36),14));
         currentTitle=text("Checking active operation…",17,WHITE);currentTitle.setTypeface(null,1);
         currentStatus=text("",12,MUTED);
@@ -95,6 +96,11 @@ final class ActivityCenter {
         active.addView(busyIndicator,new LinearLayout.LayoutParams(dp(27),dp(27)));
         pause=button("Pause",false,()->{UploadController.pause(host);update();});
         resume=button("Resume",true,()->{
+            JSONObject activeUpload=UploadStore.read(host);
+            if(activeUpload!=null&&"signin".equals(activeUpload.optString("state"))){
+                host.showActivityError("Sign in to AddisReel Studio, then tap Resume.");
+                return;
+            }
             try{UploadController.start(host);}catch(Exception e){host.showActivityError(e.getMessage());}
             update();
         });
@@ -119,7 +125,8 @@ final class ActivityCenter {
         rowButtons(active,pause,resume);
         rowButtons(active,cancel,retry);
         active.addView(review,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(43)));
-        content.addView(active);
+        dialogRoot.addView(active,new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT));
         content.addView(heading("7-STAGE PROCESSING TIMELINE"));
         LinearLayout timeline=vertical(10);
         timeline.setBackground(surface(Color.rgb(32,29,34),13));
@@ -140,12 +147,15 @@ final class ActivityCenter {
         Button close=button("Close",false,()->dialog.dismiss());
         content.addView(close,new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(43)));
         scroll.addView(content);
-        dialog=new AlertDialog.Builder(host).setView(scroll).create();
+        dialogRoot.addView(scroll,new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,0,1));
+        dialog=new AlertDialog.Builder(host).setView(dialogRoot).create();
         dialog.setOnDismissListener(d->dialog=null);
         dialog.show();
         if(dialog.getWindow()!=null){
             dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-            dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT);
+            int height=(int)(host.getResources().getDisplayMetrics().heightPixels*0.88f);
+            dialog.getWindow().setLayout(ViewGroup.LayoutParams.MATCH_PARENT,height);
         }
         update();
         host.syncProcessing(false);
@@ -184,17 +194,19 @@ final class ActivityCenter {
                 OptimizationClient.stateLabel(remoteState);
         } else if("paused".equals(uploadState))message="Paused by you · Saved chunks retained";
         else if("signin".equals(uploadState))message="Sign-in required · Open Studio to reconnect";
+        else if("error".equals(uploadState))message="Upload stopped: "+message+" · Tap Resume to retry";
         currentStatus.setText(message);
         int percent=hasLocal?Math.min(100,Math.max(0,local.optInt("progress"))):0;
         long original=hasLocal?local.optLong("size"):0;
         long confirmed=hasLocal?local.optLong("confirmedBytes"):0;
         if(uploadComplete)confirmed=original;
         if(original>0 && !uploadComplete)percent=(int)Math.min(100,100*confirmed/original);
+        uploadProgress.setIndeterminate(uploading&&confirmed==0&&"uploading".equals(stage));
         uploadProgress.setProgress(percent);
-        uploadProgress.setVisibility(hasLocal&&!uploadComplete?View.VISIBLE:View.GONE);
+        uploadProgress.setVisibility(hasLocal?View.VISIBLE:View.GONE);
         currentBytes.setText(hasLocal?(uploadComplete?
             "Uploaded "+size(original)+" • File verified":
-            size(confirmed)+" / "+size(original)+" confirmed ("+percent+"%)"):"");
+            size(confirmed)+" / "+size(original)+" verified · "+percent+"% complete"):"");
         boolean showSpin=uploadComplete&&(!("ready".equals(remoteState)||"original".equals(remoteState)||"failed".equals(remoteState)));
         busyIndicator.setVisibility(showSpin?View.VISIBLE:View.GONE);
         pause.setVisibility(uploading?View.VISIBLE:View.GONE);
