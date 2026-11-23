@@ -786,23 +786,27 @@ private fun AddisReelApp() {
                                 ElevatedCard(
                                     onClick = { selectDrama(featured); tab = 0 },
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    shape = RoundedCornerShape(24.dp),
                                     colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
                                 ) {
                                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF211A2B))) {
+                                        Box(Modifier.fillMaxWidth().height(330.dp).background(Color(0xFF211A2B))) {
                                             if (featured.posterUrl != null) {
                                                 AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
                                                 placeholder = ColorPainter(Color(0xFF34243A)),
                                                 error = ColorPainter(Color(0xFF34243A)))
                                             }
-                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF29202C)))))
-                                            Text("FEATURED DRAMA", modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = arrayOf(0f to Color(0x220C0C10), 0.48f to Color.Transparent, 1f to Color(0xFF29202C)))))
+                                            Text("YOUR FEATURED STORY", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
                                         }
                                         Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(featured.title, fontSize = 27.sp, fontWeight = FontWeight.Bold, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
                                         Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = Color(0xFFE4E0E7))
-                                        Text("▶  Start Watching", color = Gold, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Icon(Icons.Default.PlayCircleFilled, contentDescription = null, tint = Gold, modifier = Modifier.size(26.dp))
+                                            Text("Watch Episode 1", color = Gold, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                        }
                                         }
                                     }
                                 }
@@ -824,9 +828,22 @@ private fun AddisReelApp() {
                                                         ElevatedCard(
                                                             onClick = { selectDrama(drama); tab = 0 },
                                                             colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF302536)),
-                                                            modifier = Modifier.width(180.dp)
+                                                            modifier = Modifier.width(196.dp),
+                                                            shape = RoundedCornerShape(18.dp)
                                                         ) {
-                                                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                                                Box(Modifier.fillMaxWidth().height(106.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF34243A))) {
+                                                                    if (drama.posterUrl != null) AsyncImage(
+                                                                        model = drama.posterUrl,
+                                                                        contentDescription = "Continue watching " + drama.title,
+                                                                        contentScale = ContentScale.Crop,
+                                                                        modifier = Modifier.fillMaxSize(),
+                                                                        placeholder = ColorPainter(Color(0xFF34243A)),
+                                                                        error = ColorPainter(Color(0xFF34243A))
+                                                                    ) else Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(36.dp))
+                                                                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xAA09090E)))))
+                                                                    Icon(Icons.Default.PlayArrow, contentDescription = "Resume playback", tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(26.dp))
+                                                                }
                                                                 Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                                 Text("Episode $resume of ${drama.episodes}", fontSize = 12.sp, color = Gold)
                                                                 val completedCount = preferences.getStringSet("watched_" + drama.title, emptySet())?.size ?: 0
@@ -836,7 +853,7 @@ private fun AddisReelApp() {
                                                                     color = Gold,
                                                                     trackColor = Color(0xFF34343B)
                                                                 )
-                                                                Text("$completedCount / ${drama.episodes} watched · Resume", fontSize = 11.sp, color = Color.LightGray)
+                                                                Text("$completedCount of ${drama.episodes} episodes completed", fontSize = 11.sp, color = Color.LightGray)
                                                             }
                                                         }
                                                     }
@@ -848,7 +865,7 @@ private fun AddisReelApp() {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                             Text("Picked for You", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
-                                            Text("Stories selected from what you love watching", fontSize = 13.sp, color = Color.LightGray, lineHeight = 19.sp)
+                                            Text(if (viewingHistory.isEmpty()) "Discover stories made for your next binge" else "Inspired by your viewing history", fontSize = 13.sp, color = Color.LightGray, lineHeight = 19.sp)
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
