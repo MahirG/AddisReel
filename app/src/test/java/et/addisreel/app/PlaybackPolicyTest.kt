@@ -14,6 +14,13 @@ class PlaybackPolicyTest {
         assertFalse(PlaybackPolicy.canPrimeMp4("http://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/1/source.mp4"))
     }
 
+    @Test fun supportsHttpsMp4AndHlsQueryLinks() {
+        assertTrue(PlaybackPolicy.acceptsPlaybackUrl("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/1/source.mp4?auth=abc"))
+        assertTrue(PlaybackPolicy.acceptsPlaybackUrl("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/master.m3u8?auth=abc"))
+        assertFalse(PlaybackPolicy.acceptsPlaybackUrl("https://other.example/v1/media/show/2/master.m3u8"))
+        assertFalse(PlaybackPolicy.acceptsPlaybackUrl("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/bad.exe"))
+    }
+
     @Test fun refreshPrefetchedLinksAtExpiryBoundary() {
         assertTrue(PlaybackPolicy.freshPlaybackLink(90_000, 30_000, 60_000))
         assertFalse(PlaybackPolicy.freshPlaybackLink(90_001, 30_000, 60_000))
