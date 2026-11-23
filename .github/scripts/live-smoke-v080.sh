@@ -24,22 +24,22 @@ if [[ -z "$SERIES_ID" ]]; then
   exit 1
 fi
 echo "✓ Live catalog OK; testing series $SERIES_ID"
-STATUS="$(curl -sS --retry 2 --retry-delay 1 --max-time 40 -o "$TMP/poster" -D "$TMP/poster.headers" -w '%{http_code}' "$BASE/v1/posters/$SERIES_ID?w=320")"
-[[ "$STATUS" == 200 ]] || { echo "::error::Poster returned $STATUS"; cat "$TMP/poster.headers"; exit 1; }
-python3 - "$TMP/poster.headers" "$TMP/poster" <<'PY'
+for WIDTH in 320 640 960; do
+  STATUS="$(curl -sS --retry 2 --retry-delay 1 --max-time 40 -o "$TMP/poster-$WIDTH" -D "$TMP/poster-$WIDTH.headers" -w '%{http_code}' "$BASE/v1/posters/$SERIES_ID?w=$WIDTH")"
+  [[ "$STATUS" == 200 ]] || { echo "::error::Poster width $WIDTH returned $STATUS"; exit 1; }
+  python3 - "$TMP/poster-$WIDTH.headers" "$TMP/poster-$WIDTH" "$WIDTH" <<'PY'
 import sys,pathlib,re
 headers=pathlib.Path(sys.argv[1]).read_text().lower()
 size=pathlib.Path(sys.argv[2]).stat().st_size
-assert size>0,'Poster response empty'
-assert 'etag:' in headers,'Missing ETag'
-assert 'cache-control:' in headers,'Missing Cache-Control'
-assert 'server-timing:' in headers,'Missing Server-Timing'
+width=int(sys.argv[3])
+assert 0<size<=1024*1024, f'WebP size not optimized: {size}'
+assert 'etag:' in headers and 'cache-control:' in headers and 'server-timing:' in headers, 'Missing diagnostics headers'
+assert 'content-type: image/webp' in headers, 'Wrong poster content type'
 variant=re.search(r'(?m)^x-poster-variant:\s*(\S+)',headers)
-assert variant and variant.group(1) in ('original','webp-320'),headers
-print(f'✓ Poster endpoint OK: {variant.group(1)}, {size} bytes')
-if variant.group(1)=='original':
-  print('::warning::Legacy poster is served as its original file; migrate to WebP variants for full performance benefit.')
+assert variant and variant.group(1)==f'webp-{width}', 'Missing optimized WebP variant'
+print(f'✓ Optimized {width}px WebP: {size} bytes')
 PY
+done
 BAD="$(curl -sS --retry 2 --max-time 30 -o /dev/null -w '%{http_code}' "$BASE/v1/posters/$SERIES_ID?w=321")"
 [[ "$BAD" == 400 ]] || { echo "::error::Invalid-width request returned $BAD, expected 400"; exit 1; }
 ADMIN="$(curl -sS --retry 2 --max-time 30 -o /dev/null -w '%{http_code}' "$BASE/v1/admin/series")"
