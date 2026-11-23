@@ -28,12 +28,25 @@ final class UploadController {
             long size = pending.optLong("size", 0);
             if (size > 0) builder.setEstimatedNetworkBytes(0L, size);
             JobScheduler scheduler = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-            if (scheduler == null || scheduler.schedule(builder.build()) != JobScheduler.RESULT_SUCCESS)
-                throw new IllegalStateException("Android could not start the background transfer");
-        } else {
-            Intent intent = new Intent(context, UploadForegroundService.class).setAction("start");
+            boolean scheduled = false;
+            try {
+                scheduled = scheduler != null &&
+                    scheduler.schedule(builder.build()) == JobScheduler.RESULT_SUCCESS;
+            } catch (RuntimeException ignored) {
+                // OEMs can reject user-initiated jobs; try a user-started dataSync service.
+            }
+            if (!scheduled) startForegroundTransfer(context);
+        } else startForegroundTransfer(context);
+    }
+    private static void startForegroundTransfer(Context context) {
+        Intent intent = new Intent(context, UploadForegroundService.class).setAction("start");
+        try {
             if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent);
             else context.startService(intent);
+        } catch (RuntimeException error) {
+            UploadStore.changeState(context, "error", "Android blocked upload start");
+            throw new IllegalStateException(
+                "Android blocked the transfer. Keep Studio open and tap Resume again.", error);
         }
     }
     static void pause(Context context) {
@@ -41,7 +54,9 @@ final class UploadController {
         if (Build.VERSION.SDK_INT >= 34) {
             JobScheduler manager = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
             if (manager != null) manager.cancel(JOB_ID);
-        } else context.stopService(new Intent(context, UploadForegroundService.class));
+        }
+        // Stop a foreground-service fallback as well as the Android job, if one exists.
+        context.stopService(new Intent(context, UploadForegroundService.class));
     }
     static void cancel(Context context) {
         pause(context);
