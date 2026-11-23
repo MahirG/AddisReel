@@ -45,7 +45,7 @@ test("Real native multipart encoder journals independent stages and confirmed by
 test("New APK retains Studio package, signature compatibility and increments version",()=>{
   const gradle=readFileSync("studio/build.gradle.kts","utf8");
   assert.match(gradle,/applicationId = "et\.addisreel\.studio"/);
-  assert.match(gradle,/versionCode = 2/);
-  assert.match(gradle,/versionName = "2\.0\.0"/);
+  assert.match(gradle,/versionCode = 3/);
+  assert.match(gradle,/versionName = "2\.0\.1"/);
   assert.match(gradle,/signingConfigs/);
 });
