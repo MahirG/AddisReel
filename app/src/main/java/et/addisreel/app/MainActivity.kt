@@ -146,7 +146,8 @@ private fun AddisReelApp() {
     var prefetchedEpisode by remember { mutableStateOf<Triple<String, Int, String>?>(null) }
     // Signed playback URLs may expire. Never reuse a prefetched URL indefinitely.
     var prefetchedAtMs by remember { mutableLongStateOf(0L) }
-    var tab by remember { mutableIntStateOf(0) }
+    // Open on the cinematic drama storefront; playback is a deliberate viewer action.
+    var tab by remember { mutableIntStateOf(1) }
     var showEpisodes by remember { mutableStateOf(false) }
     var showFullDescription by remember { mutableStateOf(false) }
     // Viewers can move between short episodes with a deliberate vertical swipe.
@@ -427,7 +428,7 @@ private fun AddisReelApp() {
         }
         Scaffold(containerColor=Dark, bottomBar={
             if (!cinemaMode || tab != 0) NavigationBar(containerColor=Color(0xFF101014), tonalElevation=0.dp) {
-                listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Discover",Icons.Default.Search,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
+                listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Home",Icons.Default.Home,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
                     NavigationBarItem(
                         selected=tab==index,
                         onClick={tab=index},
@@ -682,7 +683,7 @@ private fun AddisReelApp() {
                         }
                     }
                     1 -> {
-                        Header("Discover")
+                        Header("AddisReel")
                         if (!remoteCatalogAvailable) Text("Preview titles · Licensed streaming catalog is not yet available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
@@ -715,12 +716,20 @@ private fun AddisReelApp() {
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                     colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF29202C))
                                 ) {
-                                    Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text("FEATURED ON ADDISREEL", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF211A2B))) {
+                                            if (featured.posterUrl != null) {
+                                                AsyncImage(model = featured.posterUrl, contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                            }
+                                            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xFF29202C)))))
+                                            Text("FEATURED DRAMA", modifier = Modifier.align(Alignment.BottomStart).padding(16.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                        }
+                                        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(featured.title, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
                                         Text(featured.description, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        Text("▶  Start watching", color = Gold, fontWeight = FontWeight.SemiBold)
+                                        Text("▶  Watch now", color = Gold, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
                                 }
                             }
