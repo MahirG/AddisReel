@@ -17,6 +17,24 @@ jobs:
         shell: bash
         run: bash .github/scripts/live-smoke-v080.sh
 
+  live-phase4-smoke:
+    if: github.ref == 'refs/heads/feature/addisreel-v100-foundation'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify live AddisReel Phase 4 endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=https://addisreel-catalog.eddieaman475.workers.dev
+          curl -fsS "$ROOT/health" | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=4 and "processor-hls" in x["features"]'
+          curl -fsS "$ROOT/v1/catalog" | python3 -c 'import sys,json;assert isinstance(json.load(sys.stdin)["series"],list)'
+          curl -fsS "$ROOT/admin/client.js" | grep -q uploadLargeMp4
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/v1/processor/jobs/11111111-1111-4111-8111-111111111111/source")
+          test "$STATUS" = 401
+          echo "### Phase 4 live backend verified" >> "$GITHUB_STEP_SUMMARY"
+
   catalog-api-check:
     runs-on: ubuntu-latest
     permissions:
