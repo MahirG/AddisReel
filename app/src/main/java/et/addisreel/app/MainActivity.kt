@@ -168,6 +168,7 @@ private fun AddisReelApp() {
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
+    var libraryFilter by remember { mutableStateOf("Saved") }
     var detailDrama by remember { mutableStateOf<Drama?>(null) }
     var recentlyWatched by remember { mutableStateOf(preferences.getString("recently_watched", "") ?: "") }
     // Keep a small, ordered local viewing history without requiring an account.
@@ -802,6 +803,19 @@ private fun AddisReelApp() {
                     }
                     2 -> {
                         Header("My Library")
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("Saved", "History", "Completed").forEach { filter ->
+                                FilterChip(
+                                    selected = libraryFilter == filter,
+                                    onClick = { libraryFilter = filter },
+                                    label = { Text(filter) }
+                                )
+                            }
+                        }
                         catalog.find { it.title == recentlyWatched }?.let { recent ->
                             val resumeEpisode = preferences.getInt("episode_" + recent.title, 1).coerceIn(1, recent.episodes)
                             Card(
@@ -822,15 +836,23 @@ private fun AddisReelApp() {
                                 }
                             }
                         }
-                        if (saved.isEmpty()) {
+                        val libraryTitles = when (libraryFilter) {
+                            "History" -> viewingHistory.mapNotNull { title -> catalog.find { it.title == title } }
+                            "Completed" -> catalog.filter { drama ->
+                                val completed = preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty()
+                                drama.episodes > 0 && (1..drama.episodes).all { it.toString() in completed }
+                            }
+                            else -> catalog.filter { it.title in saved }
+                        }
+                        if (libraryTitles.isEmpty()) {
                             Column(
                                 Modifier.fillMaxWidth().padding(28.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Icon(Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
-                                Text("Your collection starts here", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                Text("Save Ethiopian dramas to find them here later.", color = Color.LightGray)
+                                Icon(if (libraryFilter == "History") Icons.Default.History else if (libraryFilter == "Completed") Icons.Default.CheckCircle else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
+                                Text(when (libraryFilter) { "History" -> "No recently watched dramas"; "Completed" -> "No completed dramas yet"; else -> "Your collection starts here" }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(when (libraryFilter) { "History" -> "Your recently opened dramas will appear here."; "Completed" -> "Finish every episode of a drama to see it here."; else -> "Save Ethiopian dramas to find them here later." }, color = Color.LightGray)
                                 Button(onClick = { tab = 1 }) { Text("Explore dramas") }
                             }
                         } else {
@@ -838,8 +860,8 @@ private fun AddisReelApp() {
                                 contentPadding = PaddingValues(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                item { Text("${saved.size} saved series", color = Color.LightGray) }
-                                items(catalog.filter { it.title in saved }) { drama ->
+                                item { Text("${libraryTitles.size} ${libraryFilter.lowercase()} dramas", color = Color.LightGray) }
+                                items(libraryTitles) { drama ->
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         DramaRow(drama, resumeEpisode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)) { selectDrama(drama); tab = 0 }
                                         Row(
@@ -850,9 +872,11 @@ private fun AddisReelApp() {
                                             val lastEpisode = preferences.getInt("episode_" + drama.title, 1)
                                                 .coerceIn(1, drama.episodes)
                                             Text("Continue · Episode $lastEpisode of ${drama.episodes}", color = Gold, fontSize = 12.sp)
-                                            TextButton(onClick = { toggleSaved(drama.title) }) {
-                                                Icon(Icons.Default.BookmarkRemove, contentDescription = null, modifier = Modifier.size(16.dp))
-                                                Text("Remove")
+                                            if (libraryFilter == "Saved") {
+                                                TextButton(onClick = { toggleSaved(drama.title) }) {
+                                                    Icon(Icons.Default.BookmarkRemove, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Text("Remove")
+                                                }
                                             }
                                         }
                                     }
