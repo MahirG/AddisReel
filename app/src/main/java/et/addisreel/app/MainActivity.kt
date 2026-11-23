@@ -165,6 +165,7 @@ private fun AddisReelApp() {
     var qualityMenuExpanded by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableStateOf(preferences.getFloat("cinema_playback_speed", 1f).coerceIn(0.75f, 1.5f)) }
     var speedMenuExpanded by remember { mutableStateOf(false) }
+    var autoNextEnabled by remember { mutableStateOf(preferences.getBoolean("cinema_auto_next", true)) }
     var discoverQuery by remember { mutableStateOf("") }
     var discoverGenre by remember { mutableStateOf("All") }
     var discoverSort by remember { mutableStateOf("Featured") }
@@ -430,7 +431,10 @@ private fun AddisReelApp() {
                         ) {
                             val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
                             if (videoUrl != null) {
-                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, hasNextEpisode = episode < selected.episodes, onPrepareNext = { prepareNextEpisode() }, onEpisodeCompleted = {
+                                Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, hasNextEpisode = episode < selected.episodes, autoPlayNext = autoNextEnabled, onAutoNextToggle = {
+                                    autoNextEnabled = !autoNextEnabled
+                                    preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
+                                }, onPrepareNext = { prepareNextEpisode() }, onEpisodeCompleted = {
                                     if (episode < selected.episodes) selectEpisode(episode + 1)
                                 })
                             } else {
@@ -481,16 +485,21 @@ private fun AddisReelApp() {
                             IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x990C0C10), RoundedCornerShape(50))) {
                                 Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = Gold)
                             }
-                            // Cinema mode keeps episode navigation reachable without opening a sheet.
+                            // Two compact rows keep cinema controls usable on narrow phones.
                             if (cinemaMode) {
-                                Row(
+                                Column(
                                     modifier = Modifier.align(Alignment.BottomCenter)
-                                        .padding(horizontal = 18.dp, vertical = 18.dp)
-                                        .background(Color(0xCC101016), RoundedCornerShape(28.dp))
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                                        .background(Color(0xE0101016), RoundedCornerShape(22.dp))
                                         .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
                                     IconButton(
                                         onClick = { selectEpisode(episode - 1) },
                                         enabled = episode > 1
@@ -512,6 +521,13 @@ private fun AddisReelApp() {
                                     IconButton(onClick = { showEpisodes = true }) {
                                         Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = Gold)
                                     }
+                                    }
+                                    HorizontalDivider(color = Color(0xFF36333D), thickness = 1.dp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                     IconButton(onClick = {
                                         subtitlesEnabled = !subtitlesEnabled
                                         preferences.edit().putBoolean("cinema_subtitles", subtitlesEnabled).apply()
@@ -559,6 +575,16 @@ private fun AddisReelApp() {
                                             contentDescription = if (fillVideo) "Fit entire video" else "Fill screen",
                                             tint = Gold
                                         )
+                                    }
+                                    IconButton(onClick = {
+                                        autoNextEnabled = !autoNextEnabled
+                                        preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
+                                    }) {
+                                        Icon(Icons.Default.Autorenew,
+                                            contentDescription = if (autoNextEnabled) "Turn autoplay off" else "Turn autoplay on",
+                                            tint = if (autoNextEnabled) Gold else Color.Gray
+                                        )
+                                    }
                                     }
                                 }
                             }
@@ -917,7 +943,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, onPrepareNext: () -> Unit, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPrepareNext: () -> Unit, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -1099,8 +1125,8 @@ private fun AddisReelApp() {
     var nextCountdown by remember(url, episodeKey) { mutableIntStateOf(3) }
     var nextRequested by remember(url, episodeKey) { mutableStateOf(false) }
     val currentOnEpisodeCompleted by rememberUpdatedState(onEpisodeCompleted)
-    LaunchedEffect(playbackEnded, hasNextEpisode, episodeKey) {
-        if (playbackEnded && hasNextEpisode && !nextRequested) {
+    LaunchedEffect(playbackEnded, hasNextEpisode, autoPlayNext, episodeKey) {
+        if (playbackEnded && hasNextEpisode && autoPlayNext && !nextRequested) {
             nextCountdown = 3
             while (nextCountdown > 0 && !nextRequested) {
                 delay(1000L)
@@ -1223,7 +1249,7 @@ private fun AddisReelApp() {
         if (playbackEnded && !playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (hasNextEpisode) {
-                    Text("Next episode in $nextCountdown", color = Color.White, fontSize = 15.sp)
+                    Text(if (autoPlayNext) "Next episode in $nextCountdown" else "Episode complete", color = Color.White, fontSize = 15.sp)
                     Spacer(Modifier.height(10.dp))
                     Button(onClick = {
                         if (!nextRequested) {
@@ -1234,6 +1260,9 @@ private fun AddisReelApp() {
                         Icon(Icons.Default.SkipNext, contentDescription = null)
                         Spacer(Modifier.width(6.dp))
                         Text("Play next now")
+                    }
+                    TextButton(onClick = onAutoNextToggle) {
+                        Text(if (autoPlayNext) "Cancel autoplay" else "Enable autoplay", color = Gold)
                     }
                     TextButton(onClick = {
                         nextRequested = false
