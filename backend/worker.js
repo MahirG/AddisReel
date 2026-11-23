@@ -167,6 +167,30 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        if (request.method === "GET" && path === "/v1/admin/processing-jobs") {
+          const rows = await env.DB.prepare(
+            "SELECT id,series_id,episode_number,status,progress,error_message,created_at,updated_at " +
+            "FROM video_processing_jobs ORDER BY created_at DESC LIMIT 100"
+          ).all();
+          return reply({jobs:rows.results},200,false);
+        }
+        if (request.method === "POST" && path === "/v1/admin/processing-jobs") {
+          const d = await inputJSON(request);
+          if (!idOK(d.seriesId) || !Number.isInteger(d.episode) || d.episode < 1)
+            return fail("Invalid episode",400,false);
+          const e = await env.DB.prepare(
+            "SELECT media_prefix,status FROM episodes WHERE series_id=? AND number=?"
+          ).bind(d.seriesId,d.episode).first();
+          if (!e || e.status !== "draft") return fail("Create a draft episode first",409,false);
+          const source = e.media_prefix + "/source.mp4";
+          if (!await env.MEDIA.head(source)) return fail("Upload source.mp4 first",409,false);
+          const jobId = crypto.randomUUID();
+          await env.DB.prepare(
+            "INSERT INTO video_processing_jobs(id,series_id,episode_number,source_key,status) " +
+            "VALUES(?,?,?,?,'queued')"
+          ).bind(jobId,d.seriesId,d.episode,source).run();
+          return reply({jobId,status:"queued",message:"Job registered; external processor not connected"},202,false);
+        }
         if (request.method === "GET" && path === "/v1/admin/series") {
           const s=await env.DB.prepare("SELECT * FROM series ORDER BY sort_order,created_at DESC").all();
           const e=await env.DB.prepare("SELECT * FROM episodes ORDER BY series_id,number").all();
