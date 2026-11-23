@@ -72,6 +72,9 @@ jobs:
           path: android-build.log
           if-no-files-found: ignore
           retention-days: 7
+      - name: Run Android playback regression tests
+        shell: bash
+        run: gradle :app:testDebugUnitTest --no-daemon --console=plain
       - name: Verify generated APK integrity
         if: success()
         shell: bash
