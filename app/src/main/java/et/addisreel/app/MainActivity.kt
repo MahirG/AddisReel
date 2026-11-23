@@ -326,7 +326,7 @@ private fun AddisReelApp() {
                     val lastReached = preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)
                     // Only completed episodes count as watched; jumping ahead is not completion.
                     val watchedEpisodes = preferences.getStringSet("watched_" + selected.title, emptySet())?.toSet().orEmpty()
-                    val watchedCount = watchedEpisodes.count { number -> number.toIntOrNull() in 1..selected.episodes }
+                    val watchedCount = watchedEpisodes.count { number -> number.toIntOrNull()?.let { it in 1..selected.episodes } == true }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Watched $watchedCount · Continue at EP $lastReached", color = Color.LightGray, fontSize = 12.sp)
