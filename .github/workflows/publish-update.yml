@@ -2,9 +2,10 @@ name: Publish AddisReel in-app update
 on:
   # One-off, explicitly approved v0.8.0 promotion from its tested branch.
   push:
-    branches: ['feature/android-v080-cinematic-experience']
+    branches: ['feature/android-v080-cinematic-experience', 'feature/android-v090-continuity-polish']
     paths:
       - '.release/0.8.0-publish.json'
+      - '.release/0.9.0-publish.json'
   workflow_dispatch:
     inputs:
       release_notes:
@@ -27,7 +28,7 @@ jobs:
   publish:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.confirm_publish == 'PUBLISH') ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/feature/android-v080-cinematic-experience')
+      (github.event_name == 'push' && (github.ref == 'refs/heads/feature/android-v080-cinematic-experience' || github.ref == 'refs/heads/feature/android-v090-continuity-polish'))
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: production-updates
@@ -49,15 +50,19 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import json,re,pathlib
-          approved=json.loads(pathlib.Path('.release/0.8.0-publish.json').read_text())
-          assert approved == {'version':'0.8.0','versionCode':17,'confirm':'PUBLISH','branch':'feature/android-v080-cinematic-experience'}, 'Unexpected release marker'
+          import json,re,pathlib,os
+          branch=os.environ['GITHUB_REF_NAME']
+          expected={'feature/android-v080-cinematic-experience':('0.8.0',17),'feature/android-v090-continuity-polish':('0.9.0',18)}
+          assert branch in expected, 'Unexpected publishing branch'
+          version,code=expected[branch]
+          approved=json.loads(pathlib.Path(f'.release/{version}-publish.json').read_text())
+          assert approved == {'version':version,'versionCode':code,'confirm':'PUBLISH','branch':branch}, 'Unexpected release marker'
           gradle=pathlib.Path('app/build.gradle.kts').read_text()
-          assert re.search(r'versionCode\s*=\s*17\b',gradle) and re.search(r'versionName\s*=\s*"0\.8\.0"',gradle), 'Release version mismatch'
-          print('Approved one-time 0.8.0 / build 17 publication')
+          assert re.search(r'versionCode\s*=\s*'+str(code)+r'\b',gradle) and f'versionName = "{version}"' in gradle, 'Release version mismatch'
+          print(f'Approved one-time {version} / build {code} publication')
           PY
       - name: Confirm live Cloudflare readiness
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/android-v080-cinematic-experience'
         shell: bash
         run: bash .github/scripts/live-smoke-v080.sh
       - uses: actions/setup-java@v4
