@@ -164,7 +164,31 @@ export default {
         if (width !== null && !["320","640","960"].includes(width)) return fail("Unsupported poster width",400);
         const variantKey = width ? s.poster_key.replace(/\.[^.]+$/, "-" + width + ".webp") : null;
         const started = performance.now();
-        const variant = variantKey ? await env.MEDIA.get(variantKey) : null;
+        let variant = variantKey ? await env.MEDIA.get(variantKey) : null;
+        // Migrate older published posters on demand. New Studio uploads already
+        // supply the three WebP variants, so the Images binding is rarely used.
+        // Only published/licensed posters and bounded widths reach this branch.
+        if (!variant && variantKey && env.IMAGES) {
+          try {
+            const source = await env.MEDIA.get(s.poster_key);
+            if (source) {
+              const resized = (await env.IMAGES.input(source.body)
+                .transform({ width: Number(width) })
+                .output({ format: "image/webp", quality: 78 })).response();
+              if (resized.ok && resized.headers.get("Content-Type")?.startsWith("image/webp")) {
+                const optimized = await resized.arrayBuffer();
+                if (optimized.byteLength > 0 && optimized.byteLength <= 1024 * 1024) {
+                  await env.MEDIA.put(variantKey, optimized, {
+                    httpMetadata: { contentType: "image/webp" }
+                  });
+                  variant = await env.MEDIA.get(variantKey);
+                }
+              }
+            }
+          } catch (error) {
+            console.warn("Legacy poster optimization unavailable; serving original", error);
+          }
+        }
         const object = variant || await env.MEDIA.get(s.poster_key);
         const storageMs = Math.max(0,performance.now()-started).toFixed(1);
         if (!object) return fail("Poster unavailable",404);
