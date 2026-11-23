@@ -44,4 +44,21 @@ class PlaybackPolicyTest {
         assertFalse(PlaybackPolicy.canRefreshRejectedLink(404, 0))
         assertFalse(PlaybackPolicy.canRefreshRejectedLink(null, 0))
     }
+    @Test fun completeHistoryRequiresEveryEpisode() {
+        assertTrue(PlaybackPolicy.isFullyWatched(setOf("1","2"),2))
+        assertFalse(PlaybackPolicy.isFullyWatched(setOf("1","3"),2))
+        assertFalse(PlaybackPolicy.isFullyWatched(setOf("1","2"),3))
+        assertFalse(PlaybackPolicy.isFullyWatched(setOf("1"),0))
+        assertTrue(PlaybackPolicy.isFullyWatched(setOf("1","2","99"),2))
+    }
+
+    @Test fun progressIncludesPartialEpisodeWithoutCountingItTwice() {
+        assertEquals(0.25f, PlaybackPolicy.seriesProgress(setOf("1"),4,2,0L,120_000L),0.001f)
+        assertEquals(0.375f, PlaybackPolicy.seriesProgress(setOf("1"),4,2,60_000L,120_000L),0.001f)
+        assertEquals(0.25f, PlaybackPolicy.seriesProgress(setOf("1"),4,1,60_000L,120_000L),0.001f)
+        assertEquals(1f, PlaybackPolicy.seriesProgress(setOf("1","2"),2,2,60_000L,120_000L),0.001f)
+        assertEquals(0f, PlaybackPolicy.seriesProgress(emptySet(),0,1,60_000L,120_000L),0.001f)
+        assertEquals(0f, PlaybackPolicy.seriesProgress(emptySet(),2,1,60_000L,-1L),0.001f)
+    }
+
 }
