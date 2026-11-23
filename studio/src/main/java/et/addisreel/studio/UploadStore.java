@@ -57,6 +57,20 @@ final class UploadStore {
         }catch(Exception error){throw new java.io.IOException("Unable to save upload checkpoint",error);}
         save(context,current);
     }
+    /** Discard only a stale multipart session; keep the original document URI and episode. */
+    static synchronized void resetMultipartSession(Context context) {
+        JSONObject current=read(context);
+        if(current==null||"paused".equals(current.optString("state")))return;
+        current.remove("uploadId");
+        current.remove("partSize");
+        try{
+            current.put("parts",new org.json.JSONArray());
+            current.put("confirmedBytes",0);
+            current.put("progress",0);
+            current.put("stage","preparing");
+        }catch(Exception ignored){}
+        save(context,current);
+    }
     static synchronized void updateProgress(Context context,String text,int percent) {
         JSONObject current=read(context);
         if(current==null||"paused".equals(current.optString("state")))return;
