@@ -17,4 +17,25 @@ export const clientScript = "(() => {\n  \"use strict\";\n  const el = id => doc
         status(\"mediaNotice\",error.message,true);
       }finally{btn.disabled=false}
     });
+    el(\"queueProcessing\").addEventListener(\"click\",async()=>{
+      const seriesId=el(\"hlsSeries\").value.trim(),episode=Number(el(\"hlsEpisode\").value);
+      if(!/^[a-z0-9][a-z0-9-]*$/.test(seriesId)||!Number.isInteger(episode)||episode<1){
+        status(\"mediaNotice\",\"Select a valid series and episode.\",true);return;
+      }
+      const btn=el(\"queueProcessing\");btn.disabled=true;
+      try {
+        const job=await api(\"/v1/admin/processing-jobs\",\"POST\",{seriesId,episode});
+        el(\"processingState\").textContent=\"Job \"+job.jobId+\" queued. An external FFmpeg processor must be connected before conversion starts.\";
+      }catch(error){status(\"mediaNotice\",error.message,true)}
+      finally{btn.disabled=false}
+    });
+    el(\"refreshProcessing\").addEventListener(\"click\",async()=>{
+      try {
+        const result=await api(\"/v1/admin/processing-jobs\");
+        const jobs=result.jobs||[];
+        el(\"processingState\").textContent=jobs.length?
+          jobs.slice(0,5).map(j=>j.series_id+\" EP\"+j.episode_number+\": \"+j.status+\" (\"+j.progress+\"%)\").join(\" · \"):
+          \"No processing jobs yet.\";
+      }catch(error){status(\"mediaNotice\",error.message,true)}
+    });
     el(\"uploadHls\").addEventListener(\"click\",async()=>{\n      const series=el(\"hlsSeries\").value,number=Number(el(\"hlsEpisode\").value);\n      const files=Array.from(el(\"hlsFiles\").files||[]);\n      if(!/^[a-z0-9][a-z0-9-]*$/.test(series)||!Number.isInteger(number)||number<1||!files.length){\n        status(\"mediaNotice\",\"Choose a valid series, episode and HLS directory.\",true);return\n      }\n      const btn=el(\"uploadHls\");btn.disabled=true;\n      try {\n        let uploaded=0;\n        for(let i=0;i<files.length;i++) {\n          const f=files[i],rel=f.webkitRelativePath||f.name;\n          const parts=rel.split(\"/\"),path=parts.length>1?parts.slice(1).join(\"/\"):rel;\n          if(!/\\.(m3u8|ts|m4s|mp4)$/.test(path))continue;\n          el(\"uploadState\").textContent=\"Uploading \"+(i+1)+\"/\"+files.length+\" · \"+path;\n          await api(\"/v1/admin/hls/\"+encodeURIComponent(series)+\"/\"+number+\"/\"+path.split(\"/\").map(encodeURIComponent).join(\"/\"),\"PUT\",f);\n          uploaded++;\n        }\n        el(\"uploadState\").textContent=\"✓ Uploaded \"+uploaded+\" streaming files. Confirm master.m3u8 before publishing.\";\n        status(\"mediaNotice\",\"✓ Upload complete.\");\n      }catch(error){status(\"mediaNotice\",error.message,true)}\n      finally{btn.disabled=false}\n    });\n    window.addEventListener(\"beforeinstallprompt\",event=>{\n      event.preventDefault();installPrompt=event;\n    });\n    el(\"installButton\").addEventListener(\"click\",async()=>{\n      if(installPrompt){\n        installPrompt.prompt();\n        await installPrompt.userChoice;\n        installPrompt=null;\n      } else {\n        status(\"accountNotice\",\"To install on Android Chrome: open the browser menu (⋮) → Add to Home screen → Install app. If already installed, open AddisReel Studio from your home screen.\");\n      }\n    });\n  }\n  async function start() {\n    setupEvents();\n    try {\n      const session=await api(\"/v1/auth/session\");\n      if(session.authenticated)await showApp(session.email);\n      else showAuth(session.setupRequired);\n    }catch(error){\n      showAuth(false);status(\"authNotice\",\"Could not contact Studio. Check your connection and refresh.\",true);\n    }\n    if(\"serviceWorker\" in navigator) {\n      navigator.serviceWorker.register(\"/admin/sw.js\",{scope:\"/admin\"}).catch(()=>{});\n    }\n  }\n  if(document.readyState===\"loading\")document.addEventListener(\"DOMContentLoaded\",start,{once:true});\n  else start();\n})();\n";
