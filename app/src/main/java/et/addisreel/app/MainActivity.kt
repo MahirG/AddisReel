@@ -880,7 +880,11 @@ private fun AddisReelApp() {
                                         Text(featured.title, fontSize = 27.sp, fontWeight = FontWeight.Bold, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = Color.LightGray)
                                         Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = Color(0xFFE4E0E7))
-                                        val featuredResume = preferences.getInt("episode_" + featured.title, 1).coerceIn(1, featured.episodes.coerceAtLeast(1))
+                                        val featuredResume = PlaybackPolicy.resumeEpisode(
+                                            preferences.getInt("episode_" + featured.title, 1),
+                                            featured.episodes,
+                                            preferences.getStringSet("watched_" + featured.title, emptySet())?.toSet().orEmpty()
+                                        )
                                         val featuredCompleted = PlaybackPolicy.isFullyWatched(
                                             preferences.getStringSet("watched_" + featured.title, emptySet())?.toSet().orEmpty(),
                                             featured.episodes
@@ -888,7 +892,7 @@ private fun AddisReelApp() {
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                             Button(onClick = {
                                                 selectDrama(featured)
-                                                if (featuredCompleted) selectEpisode(1)
+                                                selectEpisode(if (featuredCompleted) 1 else featuredResume)
                                                 tab = 0
                                             }, modifier = Modifier.weight(1f)) {
                                                 Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -917,10 +921,13 @@ private fun AddisReelApp() {
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 unfinishedHistory.forEach { drama ->
-                                                        val resume = preferences.getInt("episode_" + drama.title, 1)
-                                                            .coerceIn(1, drama.episodes)
+                                                        val resume = PlaybackPolicy.resumeEpisode(
+                                                            preferences.getInt("episode_" + drama.title, 1),
+                                                            drama.episodes,
+                                                            preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty()
+                                                        )
                                                         ElevatedCard(
-                                                            onClick = { selectDrama(drama); tab = 0 },
+                                                            onClick = { selectDrama(drama); selectEpisode(resume); tab = 0 },
                                                             colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF302536)),
                                                             modifier = Modifier.width(196.dp),
                                                             shape = RoundedCornerShape(18.dp)
@@ -1128,9 +1135,13 @@ private fun AddisReelApp() {
                             }
                         }
                         if (libraryFilter == "Saved") catalog.find { it.title == recentlyWatched }?.let { recent ->
-                            val resumeEpisode = preferences.getInt("episode_" + recent.title, 1).coerceIn(1, recent.episodes)
+                            val recentWatched = preferences.getStringSet("watched_" + recent.title, emptySet())?.toSet().orEmpty()
+                            val recentCompleted = PlaybackPolicy.isFullyWatched(recentWatched, recent.episodes)
+                            val resumeEpisode = PlaybackPolicy.resumeEpisode(
+                                preferences.getInt("episode_" + recent.title, 1), recent.episodes, recentWatched
+                            )
                             Card(
-                                onClick = { selectDrama(recent); tab = 0 },
+                                onClick = { selectDrama(recent); selectEpisode(if (recentCompleted) 1 else resumeEpisode); tab = 0 },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF302536)),
                                 shape = RoundedCornerShape(18.dp)
@@ -1139,11 +1150,11 @@ private fun AddisReelApp() {
                                     Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(36.dp))
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text("CONTINUE WATCHING", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (recentCompleted) "WATCH AGAIN" else "CONTINUE WATCHING", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         Text(recent.title, fontWeight = FontWeight.Bold)
-                                        Text("Resume episode $resumeEpisode of ${recent.episodes}", fontSize = 12.sp, color = Color.LightGray)
+                                        Text(if (recentCompleted) "Start again from episode 1" else "Resume episode $resumeEpisode of ${recent.episodes}", fontSize = 12.sp, color = Color.LightGray)
                                     }
-                                    Icon(Icons.Default.ChevronRight, contentDescription = "Resume series", tint = Gold)
+                                    Icon(Icons.Default.ChevronRight, contentDescription = if (recentCompleted) "Watch series again" else "Resume series", tint = Gold)
                                 }
                             }
                         }
