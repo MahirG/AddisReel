@@ -816,7 +816,20 @@ private fun AddisReelApp() {
                                 )
                             }
                         }
-                        catalog.find { it.title == recentlyWatched }?.let { recent ->
+                        if (libraryFilter == "History" && viewingHistory.isNotEmpty()) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                                TextButton(onClick = {
+                                    viewingHistory = emptyList()
+                                    recentlyWatched = ""
+                                    preferences.edit().remove("viewing_history").remove("recently_watched").apply()
+                                }) {
+                                    Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Clear viewing history")
+                                }
+                            }
+                        }
+                        if (libraryFilter == "Saved") catalog.find { it.title == recentlyWatched }?.let { recent ->
                             val resumeEpisode = preferences.getInt("episode_" + recent.title, 1).coerceIn(1, recent.episodes)
                             Card(
                                 onClick = { selectDrama(recent); tab = 0 },
