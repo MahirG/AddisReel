@@ -59,3 +59,75 @@ test("missing variants fall back to the original and support conditional 304", a
   }), env);
   assert.equal(conditional.status, 304);
 });
+
+test("legacy poster is converted to WebP once and then served from R2", async () => {
+  const objects = new Map([[original, originalBytes]]);
+  let conversions = 0;
+  const migratingEnv = {
+    DB: env.DB,
+    MEDIA: {
+      async get(key) {
+        const bytes = objects.get(key);
+        if (!bytes) return null;
+        return {
+          body: bytes,
+          size: bytes.length,
+          httpEtag: key === original ? '"original"' : '"generated"',
+          httpMetadata: { contentType: key === original ? "image/jpeg" : "image/webp" }
+        };
+      },
+      async put(key, contents) {
+        objects.set(key, new Uint8Array(contents));
+      }
+    },
+    IMAGES: {
+      input() {
+        return {
+          transform({ width }) {
+            assert.equal(width, 320);
+            return this;
+          },
+          output({ format }) {
+            assert.equal(format, "image/webp");
+            conversions++;
+            return {
+              response() {
+                return new Response(variantBytes, {
+                  status: 200,
+                  headers: { "Content-Type": "image/webp" }
+                });
+              }
+            };
+          }
+        };
+      }
+    }
+  };
+  const requestUrl = origin + "/v1/posters/series-1?w=320";
+  const first = await worker.fetch(new Request(requestUrl), migratingEnv);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("x-poster-variant"), "webp-320");
+  assert.equal(first.headers.get("content-length"), String(variantBytes.length));
+  assert.deepEqual(objects.get(variant), variantBytes);
+  const second = await worker.fetch(new Request(requestUrl), migratingEnv);
+  assert.equal(second.status, 200);
+  assert.equal(second.headers.get("x-poster-variant"), "webp-320");
+  assert.equal(conversions, 1);
+});
+
+test("failed legacy optimization safely falls back to original", async () => {
+  const fallbackEnv = {
+    ...env,
+    IMAGES: { input() { throw new Error("Images transformations temporarily unavailable"); } },
+    MEDIA: { async get(key) {
+      if (key === original) return {
+        body: originalBytes, size: originalBytes.length, httpEtag: '"original"',
+        httpMetadata: { contentType: "image/jpeg" }
+      };
+      return null;
+    } }
+  };
+  const response = await worker.fetch(new Request(origin + "/v1/posters/series-1?w=320"), fallbackEnv);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-poster-variant"), "original");
+});
