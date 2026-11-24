@@ -14,21 +14,25 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
- * Small, Wi-Fi-only MP4 head prefetch for the upcoming episode.
+ * Small, Wi-Fi-only MP4 head / HLS master prefetch for the upcoming episode.
  *
  * A full second ExoPlayer instance wastes data and memory, especially on low-end
  * Android phones. Instead prime at most 256 KiB in the *same* LRU media cache
  * used by the active player, and only near the end of the current episode.
  *
- * HLS playback uses adaptive segment loading, so it intentionally does not
- * fetch arbitrary segments here; only the next HLS playback URL is prefetched.
+ * HLS playback remains adaptive: prefetch only its tiny master playlist, not
+ * video segments or entire episodes. Never prefetch on metered networks.
  */
 internal object NextEpisodePreloader {
-    private const val MAX_BYTES = 256 * 1024
+    private const val MP4_MAX_BYTES = 256 * 1024
+    private const val HLS_MANIFEST_MAX_BYTES = 64 * 1024
     private const val READ_CHUNK_BYTES = 8 * 1024
 
-    suspend fun warmMp4OnUnmeteredNetwork(context: Context, url: String, cache: SimpleCache): Boolean {
-        if (!PlaybackPolicy.canPrimeMp4(url)) return false
+    suspend fun warmNextEpisodeOnUnmeteredNetwork(context: Context, url: String, cache: SimpleCache): Boolean {
+        val mp4 = PlaybackPolicy.canPrimeMp4(url)
+        val manifest = PlaybackPolicy.canWarmHlsManifest(url)
+        if (!mp4 && !manifest) return false
+        val maxBytes = if (mp4) MP4_MAX_BYTES else HLS_MANIFEST_MAX_BYTES
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         if (connectivity.isActiveNetworkMetered) return false
         val network = connectivity.activeNetwork ?: return false
@@ -49,10 +53,10 @@ internal object NextEpisodePreloader {
             try {
                 val request = DataSpec.Builder()
                     .setUri(url)
-                    .setLength(MAX_BYTES.toLong())
+                    .setLength(if (mp4) maxBytes.toLong() else C.LENGTH_UNSET.toLong())
                     .build()
                 dataSource.open(request)
-                var remaining = MAX_BYTES
+                var remaining = maxBytes
                 val chunk = ByteArray(READ_CHUNK_BYTES)
                 var loaded = 0
                 while (remaining > 0) {
