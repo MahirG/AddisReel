@@ -75,4 +75,5 @@
     <string name="premium_owner_note">Staff only · The Studio requires your secure owner sign-in. These tools do not grant public access.</string>
     <string name="premium_open">Open section</string>
     <string name="studio_section_premieres">Premiere calendar</string>
+    <string name="premium_compact_title">Exclusive premieres</string>
 </resources>
