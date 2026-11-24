@@ -96,7 +96,7 @@ private fun posterVariant(url: String?, widthPx: Int): String? {
 }
 
 @Composable
-private fun posterModel(url: String?, widthPx: Int = 320, heightPx: Int = 480): ImageRequest {
+private fun posterModel(url: String?, widthPx: Int = NetworkBudgetPolicy.posterWidthForTile(142), heightPx: Int = 480): ImageRequest {
     val context = LocalContext.current
     return remember(context, url, widthPx, heightPx) {
         ImageRequest.Builder(context)
