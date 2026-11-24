@@ -15,9 +15,14 @@ permissions:
 jobs:
   device-screenshots:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout published Build 23 source for before screenshots
+        uses: actions/checkout@v4
+        with:
+          ref: feature/addisreel-v140-watch-integrity
+          path: before
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,9 +30,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Assemble reproducible debug APK
+      - name: Assemble unchanged Build 23 baseline
+        run: gradle -p before :app:assembleDebug --no-daemon --console=plain
+      - name: Assemble candidate Android design APK
         run: gradle :app:assembleDebug --no-daemon --console=plain
-      - name: Capture dark/light at 100% and 150% font scaling
+      - name: Capture baseline and redesigned UI at 100%, 150% and 200% font scale
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -36,11 +43,11 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: bash .github/scripts/visual-qa-android.sh
-      - name: Publish screenshots and accessibility hierarchy for visual review
+      - name: Upload before/after screenshots and accessibility dumps
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: AddisReel-visual-qa
+          name: AddisReel-visual-before-after
           path: visual-qa/
           if-no-files-found: warn
           retention-days: 21

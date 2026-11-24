@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -329,6 +330,10 @@ internal fun AddisReelTheme(content: @Composable () -> Unit) {
     }
     SideEffect {
         (context as? Activity)?.window?.let { window ->
+            @Suppress("DEPRECATION")
+            window.statusBarColor = p.background.toArgb()
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = p.navigation.toArgb()
             WindowCompat.getInsetsController(window, window.decorView).apply {
                 isAppearanceLightStatusBars = !dark
                 isAppearanceLightNavigationBars = !dark

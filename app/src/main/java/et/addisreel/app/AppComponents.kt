@@ -183,10 +183,9 @@ internal fun AddisAppearancePicker() {
             horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
         ) {
             listOf("System", "Light", "Dark").forEach { mode ->
-                FilterChip(
+                AddisChoiceChip(
                     selected = mode == choice.value,
                     onClick = { choice.change(mode) },
-                    modifier = Modifier.heightIn(min = AddisSpacing.touch),
                     label = {
                         Text(when (mode) {
                             "System" -> stringResource(R.string.theme_system)
