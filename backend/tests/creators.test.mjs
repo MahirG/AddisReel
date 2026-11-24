@@ -79,18 +79,18 @@ test("verification never bypasses independent human checks",()=>{
 });
 test("owner can register, review and audit a creator without publishing a film",async()=>{
  const env=fakeDB();
- const created=await handleCreatorAdmin(req("/v1/admin/creators","POST",sample),env.DB,new URL(root));
+ const created=await handleCreatorAdmin(req("/v1/admin/creators","POST",sample),{DB:env.DB},new URL(root));
  assert.equal(created.status,201);
  const id=(await created.json()).id;
- const dup=await handleCreatorAdmin(req("/v1/admin/creators","POST",sample),env.DB,new URL(root));
+ const dup=await handleCreatorAdmin(req("/v1/admin/creators","POST",sample),{DB:env.DB},new URL(root));
  assert.equal(dup.status,409);
- const notVerified=await handleCreatorAdmin(req("/v1/admin/creators/"+id+"/review","PATCH",{status:"verified",identityConfirmed:false,authorityConfirmed:true,note:"Still reviewing identity and business ownership records"}),env.DB,new URL(root));
+ const notVerified=await handleCreatorAdmin(req("/v1/admin/creators/"+id+"/review","PATCH",{status:"verified",identityConfirmed:false,authorityConfirmed:true,note:"Still reviewing identity and business ownership records"}),{DB:env.DB},new URL(root));
  assert.equal(notVerified.status,400);
- const approved=await handleCreatorAdmin(req("/v1/admin/creators/"+id+"/review","PATCH",{status:"verified",identityConfirmed:true,authorityConfirmed:true,note:"Owner independently checked filmmaker identity and production authority"}),env.DB,new URL(root));
+ const approved=await handleCreatorAdmin(req("/v1/admin/creators/"+id+"/review","PATCH",{status:"verified",identityConfirmed:true,authorityConfirmed:true,note:"Owner independently checked filmmaker identity and production authority"}),{DB:env.DB},new URL(root));
  assert.equal(approved.status,200);
- const listed=await handleCreatorAdmin(req("/v1/admin/creators"),env.DB,new URL(root));
+ const listed=await handleCreatorAdmin(req("/v1/admin/creators"),{DB:env.DB},new URL(root));
  assert.equal((await listed.json()).creators[0].status,"verified");
- const audit=await handleCreatorAdmin(req("/v1/admin/creators/"+id+"/events"),env.DB,new URL(root));
+ const audit=await handleCreatorAdmin(req("/v1/admin/creators/"+id+"/events"),{DB:env.DB},new URL(root));
  assert.equal((await audit.json()).events.length,2);
 });
 test("creator records and dashboard remain private without an owner session",async()=>{
