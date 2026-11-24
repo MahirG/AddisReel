@@ -15,7 +15,7 @@ permissions:
 jobs:
   device-screenshots:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Checkout published Build 23 source for before screenshots
@@ -34,12 +34,23 @@ jobs:
         run: gradle -p before :app:assembleDebug --no-daemon --console=plain
       - name: Assemble candidate Android design APK
         run: gradle :app:assembleDebug --no-daemon --console=plain
-      - name: Enable and verify KVM acceleration
+      - name: Configure KVM acceleration with software fallback
+        id: kvm
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm && test -w /dev/kvm
+          sudo udevadm settle --timeout=30 || true
+          if [ -c /dev/kvm ]; then
+            sudo chmod a+rw /dev/kvm
+          fi
+          if python3 -c 'import os,fcntl; fd=os.open("/dev/kvm",os.O_RDWR); assert fcntl.ioctl(fd,0xAE00,0)==12; os.close(fd)'; then
+            echo "disabled=false" >> "$GITHUB_OUTPUT"
+            echo "KVM verified"
+          else
+            echo "disabled=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::KVM unavailable; using software emulation"
+          fi
       - name: Record host resource availability
         run: |
           free -h
@@ -55,8 +66,8 @@ jobs:
           cores: 2
           ram-size: 2048M
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          emulator-boot-timeout: 1200
-          disable-linux-hw-accel: false
+          emulator-boot-timeout: 1800
+          disable-linux-hw-accel: ${{ steps.kvm.outputs.disabled }}
           disable-animations: true
           script: bash .github/scripts/visual-qa-android.sh
       - name: Collect host diagnostics
