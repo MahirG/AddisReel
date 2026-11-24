@@ -112,6 +112,14 @@ internal object AddisColors {
         @Composable get() = current.info
 }
 
+/** A permanent dark video layer: light app mode must not make player labels unreadable. */
+internal object AddisCinema {
+    val accent = Color(0xFFFFD17A)
+    val text = Color(0xFFF6F4F9)
+    val muted = Color(0xFFC5C3CF)
+    val playerBackground = Color(0xFF08080C)
+}
+
 internal object AddisSpacing {
     val micro: Dp = 4.dp
     val small: Dp = 8.dp
