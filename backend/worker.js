@@ -117,6 +117,18 @@ export default {
     try {
       if (request.method === "GET" && path === "/health")
         return reply({status:"ok",service:"addisreel-catalog",phase:5,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery"]});
+      // Liveness alone cannot prove the D1 job migration was applied.
+      // Readiness is deliberately sanitized: no media keys, owner data or secrets.
+      if (request.method === "GET" && path === "/health/ready") {
+        if (!env.DB || !env.MEDIA) return reply({status:"degraded",service:"addisreel-catalog"},503);
+        try {
+          await env.DB.prepare("SELECT id FROM video_processing_jobs LIMIT 1").first();
+          await env.DB.prepare("SELECT id FROM series LIMIT 1").first();
+        } catch {
+          return reply({status:"degraded",service:"addisreel-catalog"},503);
+        }
+        return reply({status:"ok",service:"addisreel-catalog",phase:5,checks:["catalog-db","processing-jobs","media-binding"]});
+      }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
         return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
