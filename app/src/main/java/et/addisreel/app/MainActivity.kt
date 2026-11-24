@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -625,12 +626,17 @@ private fun AddisReelApp() {
         }
         Scaffold(containerColor=AddisColors.background, bottomBar={
             if (!cinemaMode || tab != 0) NavigationBar(containerColor=AddisColors.navigation, tonalElevation=0.dp) {
-                listOf(Triple("Watch", Icons.Default.PlayCircle,0), Triple("Home",Icons.Default.Home,1), Triple("Library",Icons.Default.Bookmark,2), Triple("Premium",Icons.Default.Diamond,3)).forEach { (name,icon,index) ->
+                listOf(
+                    Triple(stringResource(R.string.nav_watch), Icons.Default.PlayCircle, 0),
+                    Triple(stringResource(R.string.nav_home), Icons.Default.Home, 1),
+                    Triple(stringResource(R.string.nav_library), Icons.Default.Bookmark, 2),
+                    Triple(stringResource(R.string.nav_premium), Icons.Default.Diamond, 3)
+                ).forEach { (name,icon,index) ->
                     NavigationBarItem(
                         selected=tab==index,
                         onClick={tab=index},
                         icon={Icon(icon,contentDescription=name)},
-                        label={Text(name, fontSize=11.sp, fontWeight=if(tab==index) FontWeight.SemiBold else FontWeight.Normal)},
+                        label={Text(name, style=MaterialTheme.typography.labelMedium, maxLines=1, overflow=TextOverflow.Ellipsis)},
                         alwaysShowLabel=false,
                         colors=NavigationBarItemDefaults.colors(
                             selectedIconColor=AddisColors.current.onAccent,
@@ -890,13 +896,13 @@ private fun AddisReelApp() {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
                                 AddisSectionTitle("AddisReel")
-                                Text("Big emotions. Short episodes.", style = MaterialTheme.typography.bodySmall, color = AddisColors.textSecondary)
+                                Text(stringResource(R.string.home_tagline), style = AddisScript.style(stringResource(R.string.home_tagline), MaterialTheme.typography.bodySmall), color = AddisColors.textSecondary)
                             }
                             IconButton(onClick = {
                                 homeSearchExpanded = !homeSearchExpanded
                                 if (!homeSearchExpanded) { discoverQuery = ""; discoverGenre = "All"; discoverSort = "Featured"; discoverOnlySaved = false; discoverOnlyUnwatched = false }
                             }) {
-                                Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
+                                Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else stringResource(R.string.search_dramas), tint = Gold)
                             }
                         }
                         if (!remoteCatalogAvailable) Row(
@@ -1282,7 +1288,7 @@ private fun AddisReelApp() {
                         }
                     }
                     2 -> {
-                        Header("My Library")
+                        Header(stringResource(R.string.library_heading))
                         Row(
                             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                                 .padding(horizontal = 16.dp, vertical = 6.dp),
@@ -1403,7 +1409,7 @@ private fun AddisReelApp() {
                                 .padding(horizontal = 24.dp, vertical = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            AddisScreenTitle("AddisReel Premium", "Stories worth staying for.")
+                            AddisScreenTitle(stringResource(R.string.premium_heading), "Stories worth staying for.")
                             // Updates are essential app maintenance, not a premium purchase.
                             // Put them first so the install action is visible without scrolling.
                             AddisAppearancePicker()
