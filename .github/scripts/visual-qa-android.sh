@@ -2,6 +2,35 @@
 set -euo pipefail
 
 mkdir -p visual-qa
+# Retry transient transport failures without accepting missing captures.
+adb_retry() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if timeout 45 adb "$@"; then return 0; fi
+    echo "ADB retry $attempt: $*" >&2
+    timeout 15 adb reconnect offline >&2 || true
+    timeout 30 adb wait-for-device >&2 || true
+    sleep 3
+  done
+  return 1
+}
+capture_png() {
+  local dest="$1" attempt
+  for attempt in 1 2 3 4 5; do
+    if timeout 30 adb exec-out screencap -p > "$dest.tmp" &&
+       python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); assert len(d)>1024 and d.startswith(bytes.fromhex("89504e470d0a1a0a"))' "$dest.tmp"; then
+      mv "$dest.tmp" "$dest"
+      return 0
+    fi
+    rm -f "$dest.tmp"
+    timeout 15 adb reconnect offline >&2 || true
+    timeout 30 adb wait-for-device >&2 || true
+    sleep 3
+  done
+  return 1
+}
+trap 'echo "QA failed at line $LINENO" >&2; adb devices -l >&2 || true; timeout 20 adb logcat -d -t 500 > visual-qa/failure-logcat.txt 2>&1 || true' ERR
+set -E
 APP=et.addisreel.app/.MainActivity
 BEFORE_APK=before/app/build/outputs/apk/debug/app-debug.apk
 AFTER_APK=app/build/outputs/apk/debug/app-debug.apk
@@ -10,7 +39,7 @@ test -s "$BEFORE_APK" && test -s "$AFTER_APK"
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
-oldsize=$(adb shell wm size | tr -d '\r' | tail -1)
+oldsize=$(adb_retry shell wm size | tr -d '\r' | tail -1)
 olddensity=$(adb shell wm density | tr -d '\r' | tail -1)
 trap 'adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true; adb shell cmd uimode night no >/dev/null 2>&1 || true; adb shell wm size reset >/dev/null 2>&1 || true; adb shell wm density reset >/dev/null 2>&1 || true' EXIT
 
@@ -19,7 +48,7 @@ tap_tab() {
   size=$(adb shell wm size | tr -d '\r' | tail -n1 | grep -oE '[0-9]+x[0-9]+')
   width=$(printf '%s' "$size" | cut -d x -f 1)
   height=$(printf '%s' "$size" | cut -d x -f 2)
-  dpi=$(adb shell wm density | tr -d '\r' | tail -n1 | grep -oE '[0-9]+' | tail -n1)
+  dpi=$(adb_retry shell wm density | tr -d '\r' | tail -n1 | grep -oE '[0-9]+' | tail -n1)
   offset=$((70 * dpi / 160))
   case "$tab" in
     watch) x=$((width / 8));;
@@ -29,7 +58,7 @@ tap_tab() {
     *) echo "Invalid tab: $tab" >&2; exit 2;;
   esac
   y=$((height - offset))
-  adb shell input tap "$x" "$y"
+  adb_retry shell input tap "$x" "$y"
   sleep 2
 }
 
@@ -38,15 +67,17 @@ capture_group() {
   adb shell cmd uimode night "$theme" >/dev/null
   adb shell settings put system font_scale "$font"
   adb shell am force-stop et.addisreel.app || true
-  adb shell am start -W -n "$APP"
+  adb_retry shell am start -W -n "$APP"
   sleep 5
   group="$stage-$device-$theme-font$font"
   for tab in home watch library premium; do
     tap_tab "$tab"
-    adb exec-out screencap -p > "visual-qa/$group-$tab.png"
+    echo "Capturing $group-$tab"
+    capture_png "visual-qa/$group-$tab.png"
     test -s "visual-qa/$group-$tab.png"
-    adb shell uiautomator dump /sdcard/addisreel-ui.xml >/dev/null 2>&1 || true
-    adb pull /sdcard/addisreel-ui.xml "visual-qa/$group-$tab.xml" >/dev/null 2>&1 || true
+    adb_retry shell rm -f /sdcard/addisreel-ui.xml
+    adb_retry shell uiautomator dump /sdcard/addisreel-ui.xml >/dev/null
+    adb_retry pull /sdcard/addisreel-ui.xml "visual-qa/$group-$tab.xml" >/dev/null
   done
 }
 
