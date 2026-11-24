@@ -6,6 +6,9 @@ import { requireAdmin, handleAuth } from "./auth.js";
 import { newSalt, deriveProof } from "./password-client.js";
 import { parseMovieFields } from "./importer.js";
 import { handleCreatorAdmin } from "./creators.js";
+import { handleRightsAdmin, hasValidRights, rightsPredicate } from "./rights.js";
+import { rightsHtml } from "./rights-page.js";
+import { rightsClient } from "./rights-client.js";
 import { creatorHtml } from "./creator-page.js";
 import { creatorClient } from "./creator-client.js";
 
@@ -53,7 +56,7 @@ async function publicSeries(env) {
   const rows = await env.DB.prepare(
     "SELECT s.id,s.title,s.genre,s.description,s.sort_order, " +
     "(SELECT COUNT(*) FROM episodes e WHERE e.series_id=s.id AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL) AS episodes " +
-    "FROM series s WHERE s.status='published' AND s.licensed=1 " +
+    "FROM series s WHERE s.status='published' AND s.licensed=1 AND " + rightsPredicate("s") + " " +
     "AND EXISTS(SELECT 1 FROM episodes e WHERE e.series_id=s.id AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL) " +
     "ORDER BY s.sort_order ASC, s.created_at DESC"
   ).all();
@@ -78,7 +81,7 @@ async function playableEpisode(env, id, n) {
   return env.DB.prepare(
     "SELECT e.series_id,e.number,e.title,e.media_prefix,e.duration_seconds FROM episodes e " +
     "JOIN series s ON s.id=e.series_id WHERE s.id=? AND e.number=? AND " +
-    "s.status='published' AND s.licensed=1 AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL"
+    "s.status='published' AND s.licensed=1 AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL AND " + rightsPredicate("s")
   ).bind(id,n).first();
 }
 async function serveR2(env, key, path, request) {
@@ -134,7 +137,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag","creator-verification","exclusive-rights"]});
       // Liveness alone cannot prove the D1 job migration was applied.
       // Readiness is deliberately sanitized: no media keys, owner data or secrets.
       if (request.method === "GET" && path === "/health/ready") {
@@ -142,10 +145,12 @@ export default {
         try {
           await env.DB.prepare("SELECT id FROM video_processing_jobs LIMIT 1").first();
           await env.DB.prepare("SELECT id FROM series LIMIT 1").first();
+          await env.DB.prepare("SELECT id FROM title_rights LIMIT 1").first();
+          await env.DB.prepare("SELECT series_id FROM grandfathered_rights LIMIT 1").first();
         } catch {
           return reply({status:"degraded",service:"addisreel-catalog"},503);
         }
-        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding","exclusive-rights-registry"]});
       }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
@@ -153,6 +158,13 @@ export default {
           headers:{"Content-Type":"application/javascript; charset=utf-8",
             "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         });
+      if (request.method === "GET" && path === "/admin/rights.js")
+        return new Response(rightsClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/rights") {
+        const access=await requireAdmin(request,env,url);
+        if(access.error) return Response.redirect(url.origin+"/admin",302);
+        return new Response(rightsHtml,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
+      }
       if (request.method === "GET" && path === "/admin/creators.js")
         return new Response(creatorClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
       if (request.method === "GET" && path === "/admin/creators") {
@@ -198,7 +210,7 @@ export default {
       const episodesMatch = /^\/v1\/series\/([a-z0-9-]+)\/episodes$/.exec(path);
       if (request.method === "GET" && episodesMatch) {
         const id = episodesMatch[1];
-        const series = await env.DB.prepare("SELECT id FROM series WHERE id=? AND status='published' AND licensed=1").bind(id).first();
+        const series = await env.DB.prepare("SELECT s.id FROM series s WHERE s.id=? AND s.status='published' AND s.licensed=1 AND " + rightsPredicate("s")).bind(id).first();
         if (!series) return fail("Series unavailable",404);
         const rows = await env.DB.prepare(
           "SELECT number,title,duration_seconds FROM episodes WHERE series_id=? AND status='published' AND licensed=1 AND media_prefix IS NOT NULL ORDER BY number"
@@ -236,7 +248,7 @@ export default {
       }
       const poster = /^\/v1\/posters\/([a-z0-9-]+)$/.exec(path);
       if (request.method === "GET" && poster) {
-        const s=await env.DB.prepare("SELECT poster_key FROM series WHERE id=? AND status='published' AND licensed=1")
+        const s=await env.DB.prepare("SELECT s.poster_key FROM series s WHERE s.id=? AND s.status='published' AND s.licensed=1 AND " + rightsPredicate("s"))
           .bind(poster[1]).first();
         if (!s || !s.poster_key) return fail("Poster unavailable",404);
         // Only predefined variants are accepted; missing variants fall back to the original.
@@ -367,6 +379,8 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        if (path==="/v1/admin/rights" || path.startsWith("/v1/admin/rights/"))
+          return handleRightsAdmin(request,env,url);
         if (path==="/v1/admin/creators" || path.startsWith("/v1/admin/creators/"))
           return handleCreatorAdmin(request,env,url);
         // R2 multipart is for draft MP4 sources only. Each authenticated request
@@ -515,6 +529,8 @@ export default {
               !textField(d.description,2000,false) || !["draft","published"].includes(d.status) ||
               !Number.isInteger(d.sortOrder || 0) || Math.abs(d.sortOrder || 0) > 100000)
             return fail("Invalid series fields",400,false);
+          if(d.status==="published" && d.licensed===true && !await hasValidRights(env,d.id))
+            return fail("Approve a valid worldwide exclusive first-premiere rights agreement before publishing this title",409,false);
           await env.DB.prepare(
             "INSERT INTO series(id,title,genre,description,status,licensed,sort_order) VALUES(?,?,?,?,?,?,?) " +
             "ON CONFLICT(id) DO UPDATE SET title=excluded.title,genre=excluded.genre,description=excluded.description," +
@@ -532,6 +548,8 @@ export default {
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
           if (d.status === "published" && d.licensed === true) {
+            if(!await hasValidRights(env,d.seriesId))
+              return fail("Approve a valid exclusive agreement before publishing the episode",409,false);
             const manifest = await env.MEDIA.get(prefix + "/master.m3u8");
             const mp4 = manifest ? null : await env.MEDIA.head(prefix + "/source.mp4");
             if (!manifest && !mp4)
