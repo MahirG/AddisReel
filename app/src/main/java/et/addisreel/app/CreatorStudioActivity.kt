@@ -190,20 +190,20 @@ class CreatorStudioActivity : ComponentActivity() {
                     return true
                 }
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                    progress.visibility = View.VISIBLE
+                    this@CreatorStudioActivity.progress.visibility = View.VISIBLE
                 }
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    progress.visibility = View.GONE
+                    this@CreatorStudioActivity.progress.visibility = View.GONE
                 }
                 override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
                     if (request?.isForMainFrame == true) {
-                        progress.visibility = View.GONE
+                        this@CreatorStudioActivity.progress.visibility = View.GONE
                         alert(R.string.studio_network_error)
                     }
                 }
                 override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
                     handler?.cancel()
-                    progress.visibility = View.GONE
+                    this@CreatorStudioActivity.progress.visibility = View.GONE
                     alert(R.string.studio_tls_error)
                 }
                 override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
@@ -248,7 +248,7 @@ class CreatorStudioActivity : ComponentActivity() {
     }
 
     private fun downloadPdf(link: String) {
-        progress.visibility = View.VISIBLE
+        this@CreatorStudioActivity.progress.visibility = View.VISIBLE
         work.launch {
             try {
                 val file = withContext(Dispatchers.IO) { getPrivatePdf(link) }
@@ -256,7 +256,7 @@ class CreatorStudioActivity : ComponentActivity() {
             } catch (_: Exception) {
                 alert(R.string.studio_pdf_error)
             } finally {
-                progress.visibility = View.GONE
+                this@CreatorStudioActivity.progress.visibility = View.GONE
             }
         }
     }
@@ -330,7 +330,7 @@ class CreatorStudioActivity : ComponentActivity() {
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = getString(R.string.studio_pdf_page_description)
             }
-            scroll.addView(pdfImage, ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            scroll.addView(pdfImage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             panel.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             val actions = LinearLayout(this).apply { gravity = android.view.Gravity.CENTER_VERTICAL }
             pdfPrevious = control(R.string.studio_previous) { showPdfPage(pdfPage - 1) }
