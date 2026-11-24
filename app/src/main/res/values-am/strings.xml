@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AddisReel</string>
+    <string name="nav_watch">ተመልከት</string>
+    <string name="nav_home">መነሻ</string>
+    <string name="nav_library">ስብስብ</string>
+    <string name="nav_premium">ፕሪሚየም</string>
+    <string name="library_heading">የእኔ ስብስብ</string>
+    <string name="premium_heading">AddisReel ፕሪሚየም</string>
+    <string name="home_tagline">ትልቅ ስሜት። አጫጭር ክፍሎች።</string>
+    <string name="search_dramas">ድራማዎችን ፈልግ</string>
+    <string name="appearance">መልክ</string>
+    <string name="appearance_description">የመሣሪያዎን መልክ ይጠቀሙ ወይም የሚመችዎትን ይምረጡ።</string>
+    <string name="theme_system">ስርዓት</string>
+    <string name="theme_light">ብርሃን</string>
+    <string name="theme_dark">ጨለማ</string>
+    <string name="app_updates">የመተግበሪያ ዝማኔዎች</string>
+</resources>
