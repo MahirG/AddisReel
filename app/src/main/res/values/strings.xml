@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AddisReel</string>
+    <string name="nav_watch">Watch</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_library">Library</string>
+    <string name="nav_premium">Premium</string>
+    <string name="library_heading">My Library</string>
+    <string name="premium_heading">AddisReel Premium</string>
+    <string name="home_tagline">Big emotions. Short episodes.</string>
+    <string name="search_dramas">Search dramas</string>
+    <string name="appearance">Appearance</string>
+    <string name="appearance_description">Use your device preference or choose a comfortable theme.</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="app_updates">App updates</string>
+</resources>
