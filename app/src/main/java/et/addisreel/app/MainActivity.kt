@@ -1411,70 +1411,9 @@ private fun AddisReelApp() {
                         }
                     }
                     else -> {
-                        // Keep the updater reachable on short screens and at large font sizes.
-                        // The bottom navigation remains outside this independently scrollable pane.
-                        Column(
-                            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = AddisSpacing.section, vertical = AddisSpacing.standard),
-                            verticalArrangement = Arrangement.spacedBy(AddisSpacing.standard)
-                        ) {
-                            AddisScreenTitle(stringResource(R.string.premium_heading), "Stories worth staying for.")
-                            // Updates are essential app maintenance, not a premium purchase.
-                            // Put them first so the install action is visible without scrolling.
-                            AddisAppearancePicker()
-                            HorizontalDivider()
-                            InAppUpdatePanel()
-                            HorizontalDivider()
-                            // Staff-only workspace. Cloudflare enforces the owner session:
-                            // never embed credentials or trust this UI button as authorization.
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = AddisColors.elevated)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(AddisSpacing.comfortable),
-                                    verticalArrangement = Arrangement.spacedBy(AddisSpacing.standard)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(AddisSpacing.standard)
-                                    ) {
-                                        Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = Gold)
-                                        Text(
-                                            stringResource(R.string.creator_studio_admin_label),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = AddisColors.textPrimary
-                                        )
-                                    }
-                                    Text(
-                                        stringResource(R.string.creator_studio_description),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = AddisColors.textSecondary
-                                    )
-                                    Button(
-                                        onClick = {
-                                            context.startActivity(Intent(context, CreatorStudioActivity::class.java))
-                                        },
-                                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                                    ) {
-                                        Icon(Icons.Default.MovieFilter, contentDescription = null)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text(stringResource(R.string.creator_studio_open))
-                                    }
-                                }
-                            }
-                            HorizontalDivider()
-                            Icon(Icons.Default.Diamond, null, Modifier.size(48.dp), tint = Gold)
-                            Text("Unlock more Ethiopian stories", fontSize = AddisTypeSize.heading, fontWeight = AddisTypeWeight.strong, lineHeight = AddisLineHeight.headline)
-                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.", color = AddisColors.textSecondary, lineHeight = AddisLineHeight.body)
-                            Card {
-                                Column(Modifier.padding(AddisSpacing.comfortable)) {
-                                    Text("Coming soon", color = Gold, fontWeight = AddisTypeWeight.strong)
-                                    Text("telebirr • Ethiopian banks • local payment gateway")
-                                }
-                            }
-                            Spacer(Modifier.height(24.dp))
-                        }
+                        // Build 26: dedicated, independently scrollable premium experience.
+                        // Preserves access to update installation and secure Creator Studio.
+                        PremiumExperience(onExplore = { tab = 1 })
                     }
                 }
             }

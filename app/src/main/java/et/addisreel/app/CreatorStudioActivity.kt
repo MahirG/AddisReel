@@ -49,6 +49,10 @@ import kotlin.math.roundToInt
 
 /** Staff-only web workspace; the existing Cloudflare owner login is authoritative. */
 class CreatorStudioActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_INITIAL_ROUTE = "addisreel_creator_studio_route"
+        private val allowedRoutes = setOf("/admin", "/admin/creators", "/admin/rights", "/admin/premieres")
+    }
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var pendingPicker: ValueCallback<Array<Uri>>? = null
     private lateinit var web: WebView
@@ -137,7 +141,9 @@ class CreatorStudioActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() = back()
         })
-        web.loadUrl(StudioNavigationPolicy.ORIGIN + "/admin")
+        val requestedRoute = intent?.getStringExtra(EXTRA_INITIAL_ROUTE)
+        val safeRoute = if (requestedRoute in allowedRoutes) requestedRoute!! else "/admin"
+        web.loadUrl(StudioNavigationPolicy.ORIGIN + safeRoute)
     }
 
     private fun openMenu(anchor: View) {
@@ -145,13 +151,15 @@ class CreatorStudioActivity : ComponentActivity() {
         popup.menu.add(0, 1, 0, getString(R.string.studio_section_content))
         popup.menu.add(0, 2, 1, getString(R.string.studio_section_creators))
         popup.menu.add(0, 3, 2, getString(R.string.studio_section_rights))
-        popup.menu.add(0, 4, 3, getString(R.string.studio_refresh))
+        popup.menu.add(0, 5, 3, getString(R.string.studio_section_premieres))
+        popup.menu.add(0, 4, 4, getString(R.string.studio_refresh))
         popup.setOnMenuItemClickListener {
             closePdf()
             when (it.itemId) {
                 1 -> web.loadUrl(StudioNavigationPolicy.ORIGIN + "/admin")
                 2 -> web.loadUrl(StudioNavigationPolicy.ORIGIN + "/admin/creators")
                 3 -> web.loadUrl(StudioNavigationPolicy.ORIGIN + "/admin/rights")
+                5 -> web.loadUrl(StudioNavigationPolicy.ORIGIN + "/admin/premieres")
                 4 -> web.reload()
             }
             true

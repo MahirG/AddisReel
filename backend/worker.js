@@ -11,6 +11,11 @@ import { rightsHtml } from "./rights-page.js";
 import { rightsClient } from "./rights-client.js";
 import { creatorHtml } from "./creator-page.js";
 import { creatorClient } from "./creator-client.js";
+import { premiereGate, episodeGate, canStageScheduledRelease, publicPremieres, handlePremiereAdmin } from "./premieres.js";
+import { premiereHtml } from "./premiere-page.js";
+import { premiereClient } from "./premiere-client.js";
+import { publicPremiereHtml } from "./premiere-public-page.js";
+import { publicPremiereClient } from "./premiere-public-client.js";
 
 const publicHeaders = { "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" };
 const JSON_TYPE = "application/json; charset=utf-8";
@@ -55,9 +60,9 @@ function textField(v, max, required = true) {
 async function publicSeries(env) {
   const rows = await env.DB.prepare(
     "SELECT s.id,s.title,s.genre,s.description,s.sort_order, " +
-    "(SELECT COUNT(*) FROM episodes e WHERE e.series_id=s.id AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL) AS episodes " +
-    "FROM series s WHERE s.status='published' AND s.licensed=1 AND " + rightsPredicate("s") + " " +
-    "AND EXISTS(SELECT 1 FROM episodes e WHERE e.series_id=s.id AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL) " +
+    "(SELECT COUNT(*) FROM episodes e WHERE e.series_id=s.id AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL AND " + episodeGate("e") + ") AS episodes " +
+    "FROM series s WHERE s.status='published' AND s.licensed=1 AND " + rightsPredicate("s") + " AND " + premiereGate("s") + " " +
+    "AND EXISTS(SELECT 1 FROM episodes e WHERE e.series_id=s.id AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL AND " + episodeGate("e") + ") " +
     "ORDER BY s.sort_order ASC, s.created_at DESC"
   ).all();
   return rows.results;
@@ -81,7 +86,7 @@ async function playableEpisode(env, id, n) {
   return env.DB.prepare(
     "SELECT e.series_id,e.number,e.title,e.media_prefix,e.duration_seconds FROM episodes e " +
     "JOIN series s ON s.id=e.series_id WHERE s.id=? AND e.number=? AND " +
-    "s.status='published' AND s.licensed=1 AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL AND " + rightsPredicate("s")
+    "s.status='published' AND s.licensed=1 AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL AND " + rightsPredicate("s") + " AND " + premiereGate("s") + " AND " + episodeGate("e")
   ).bind(id,n).first();
 }
 async function serveR2(env, key, path, request) {
@@ -137,7 +142,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag","creator-verification","exclusive-rights"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag","creator-verification","exclusive-rights","scheduled-premieres","episode-drop-calendar"]});
       // Liveness alone cannot prove the D1 job migration was applied.
       // Readiness is deliberately sanitized: no media keys, owner data or secrets.
       if (request.method === "GET" && path === "/health/ready") {
@@ -147,10 +152,12 @@ export default {
           await env.DB.prepare("SELECT id FROM series LIMIT 1").first();
           await env.DB.prepare("SELECT id FROM title_rights LIMIT 1").first();
           await env.DB.prepare("SELECT series_id FROM grandfathered_rights LIMIT 1").first();
+          await env.DB.prepare("SELECT series_id FROM premiere_schedules LIMIT 1").first();
+          await env.DB.prepare("SELECT series_id FROM episode_release_schedules LIMIT 1").first();
         } catch {
           return reply({status:"degraded",service:"addisreel-catalog"},503);
         }
-        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding","exclusive-rights-registry"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding","exclusive-rights-registry","premiere-schedules"]});
       }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
@@ -158,6 +165,17 @@ export default {
           headers:{"Content-Type":"application/javascript; charset=utf-8",
             "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         });
+      if (request.method === "GET" && path === "/premieres")
+        return new Response(publicPremiereHtml,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; form-action 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
+      if (request.method === "GET" && path === "/premiere-countdown.js")
+        return new Response(publicPremiereClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/premieres.js")
+        return new Response(premiereClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/premieres") {
+        const access=await requireAdmin(request,env,url);
+        if(access.error) return Response.redirect(url.origin+"/admin",302);
+        return new Response(premiereHtml,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
+      }
       if (request.method === "GET" && path === "/admin/rights.js")
         return new Response(rightsClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
       if (request.method === "GET" && path === "/admin/rights") {
@@ -207,13 +225,15 @@ export default {
         return new Response(null,{status:204,headers:{...publicHeaders,"Access-Control-Allow-Methods":"GET, OPTIONS"}});
       if (request.method === "GET" && path === "/v1/catalog")
         return publicCatalogResponse(request,env);
+      if (request.method === "GET" && path === "/v1/premieres")
+        return publicPremieres(env);
       const episodesMatch = /^\/v1\/series\/([a-z0-9-]+)\/episodes$/.exec(path);
       if (request.method === "GET" && episodesMatch) {
         const id = episodesMatch[1];
-        const series = await env.DB.prepare("SELECT s.id FROM series s WHERE s.id=? AND s.status='published' AND s.licensed=1 AND " + rightsPredicate("s")).bind(id).first();
+        const series = await env.DB.prepare("SELECT s.id FROM series s WHERE s.id=? AND s.status='published' AND s.licensed=1 AND " + rightsPredicate("s") + " AND " + premiereGate("s")).bind(id).first();
         if (!series) return fail("Series unavailable",404);
         const rows = await env.DB.prepare(
-          "SELECT number,title,duration_seconds FROM episodes WHERE series_id=? AND status='published' AND licensed=1 AND media_prefix IS NOT NULL ORDER BY number"
+          "SELECT e.number,e.title,e.duration_seconds FROM episodes e WHERE e.series_id=? AND e.status='published' AND e.licensed=1 AND e.media_prefix IS NOT NULL AND " + episodeGate("e") + " ORDER BY e.number"
         ).bind(id).all();
         return reply({seriesId:id,episodes:rows.results});
       }
@@ -248,7 +268,7 @@ export default {
       }
       const poster = /^\/v1\/posters\/([a-z0-9-]+)$/.exec(path);
       if (request.method === "GET" && poster) {
-        const s=await env.DB.prepare("SELECT s.poster_key FROM series s WHERE s.id=? AND s.status='published' AND s.licensed=1 AND " + rightsPredicate("s"))
+        const s=await env.DB.prepare("SELECT s.poster_key FROM series s WHERE s.id=? AND s.status='published' AND s.licensed=1 AND " + rightsPredicate("s") + " AND " + premiereGate("s"))
           .bind(poster[1]).first();
         if (!s || !s.poster_key) return fail("Poster unavailable",404);
         // Only predefined variants are accepted; missing variants fall back to the original.
@@ -379,6 +399,8 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        if (path==="/v1/admin/premieres" || path.startsWith("/v1/admin/premieres/"))
+          return handlePremiereAdmin(request,env,url);
         if (path==="/v1/admin/rights" || path.startsWith("/v1/admin/rights/"))
           return handleRightsAdmin(request,env,url);
         if (path==="/v1/admin/creators" || path.startsWith("/v1/admin/creators/"))
@@ -529,7 +551,7 @@ export default {
               !textField(d.description,2000,false) || !["draft","published"].includes(d.status) ||
               !Number.isInteger(d.sortOrder || 0) || Math.abs(d.sortOrder || 0) > 100000)
             return fail("Invalid series fields",400,false);
-          if(d.status==="published" && d.licensed===true && !await hasValidRights(env,d.id))
+          if(d.status==="published" && d.licensed===true && !await canStageScheduledRelease(env,d.id))
             return fail("Approve a valid worldwide exclusive first-premiere rights agreement before publishing this title",409,false);
           await env.DB.prepare(
             "INSERT INTO series(id,title,genre,description,status,licensed,sort_order) VALUES(?,?,?,?,?,?,?) " +
@@ -548,7 +570,7 @@ export default {
           if (!parent) return fail("Series not found",404,false);
           const prefix="series/" + d.seriesId + "/episodes/" + d.number;
           if (d.status === "published" && d.licensed === true) {
-            if(!await hasValidRights(env,d.seriesId))
+            if(!await canStageScheduledRelease(env,d.seriesId))
               return fail("Approve a valid exclusive agreement before publishing the episode",409,false);
             const manifest = await env.MEDIA.get(prefix + "/master.m3u8");
             const mp4 = manifest ? null : await env.MEDIA.head(prefix + "/source.mp4");
