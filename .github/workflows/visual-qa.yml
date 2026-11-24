@@ -40,17 +40,31 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
           test -r /dev/kvm && test -w /dev/kvm
+      - name: Record host resource availability
+        run: |
+          free -h
+          df -h
+          nproc
       - name: Capture baseline and redesigned UI at 100%, 150% and 200% font scale
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: default
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          cores: 2
+          ram-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
           emulator-boot-timeout: 1200
           disable-linux-hw-accel: false
           disable-animations: true
           script: bash .github/scripts/visual-qa-android.sh
+      - name: Collect host diagnostics
+        if: failure()
+        run: |
+          mkdir -p visual-qa
+          free -h > visual-qa/host-memory.txt
+          sudo dmesg -T | tail -300 > visual-qa/host-kernel.txt
       - name: Upload before/after screenshots and accessibility dumps
         if: always()
         uses: actions/upload-artifact@v4
