@@ -1,0 +1,46 @@
+name: AddisReel visual QA screenshots
+on:
+  push:
+    branches: ['feature/addisreel-v150-design-system']
+    paths:
+      - 'app/src/main/**'
+      - 'app/build.gradle.kts'
+      - '.github/scripts/visual-qa-android.sh'
+      - '.github/workflows/visual-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  device-screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Assemble reproducible debug APK
+        run: gradle :app:assembleDebug --no-daemon --console=plain
+      - name: Capture dark/light at 100% and 150% font scaling
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash .github/scripts/visual-qa-android.sh
+      - name: Publish screenshots and accessibility hierarchy for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AddisReel-visual-qa
+          path: visual-qa/
+          if-no-files-found: warn
+          retention-days: 21
