@@ -5,6 +5,9 @@ import { icon192Base64, icon512Base64 } from "./icons.js";
 import { requireAdmin, handleAuth } from "./auth.js";
 import { newSalt, deriveProof } from "./password-client.js";
 import { parseMovieFields } from "./importer.js";
+import { handleCreatorAdmin } from "./creators.js";
+import { creatorHtml } from "./creator-page.js";
+import { creatorClient } from "./creator-client.js";
 
 const publicHeaders = { "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" };
 const JSON_TYPE = "application/json; charset=utf-8";
@@ -150,6 +153,13 @@ export default {
           headers:{"Content-Type":"application/javascript; charset=utf-8",
             "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         });
+      if (request.method === "GET" && path === "/admin/creators.js")
+        return new Response(creatorClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
+      if (request.method === "GET" && path === "/admin/creators") {
+        const access=await requireAdmin(request,env,url);
+        if(access.error) return Response.redirect(url.origin+"/admin",302);
+        return new Response(creatorHtml,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","X-Frame-Options":"DENY","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; form-action 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
+      }
       if (request.method === "GET" && path === "/admin/client.js")
         return new Response(clientScript,{headers:{"Content-Type":"application/javascript; charset=utf-8",
           "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
@@ -357,6 +367,8 @@ export default {
       if (path.startsWith("/v1/admin/")) {
         const access=await requireAdmin(request,env,url);
         if(access.error) return access.error;
+        if (path==="/v1/admin/creators" || path.startsWith("/v1/admin/creators/"))
+          return handleCreatorAdmin(request,env,url);
         // R2 multipart is for draft MP4 sources only. Each authenticated request
         // transports at most 8 MiB, respecting the Worker request-size limit.
         const multipart = /^\/v1\/admin\/multipart\/([a-z0-9-]+)\/([1-9][0-9]*)$/.exec(path);
