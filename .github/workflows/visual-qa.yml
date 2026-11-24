@@ -14,6 +14,56 @@ permissions:
 
 jobs:
   device-screenshots:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - stage: baseline
+            theme: 'yes'
+            font: '1.0'
+            device: normal
+          - stage: baseline
+            theme: 'yes'
+            font: '1.5'
+            device: normal
+          - stage: baseline
+            theme: 'no'
+            font: '1.0'
+            device: normal
+          - stage: baseline
+            theme: 'no'
+            font: '1.5'
+            device: normal
+          - stage: candidate
+            theme: 'yes'
+            font: '1.0'
+            device: normal
+          - stage: candidate
+            theme: 'yes'
+            font: '1.5'
+            device: normal
+          - stage: candidate
+            theme: 'yes'
+            font: '2.0'
+            device: compact
+          - stage: candidate
+            theme: 'no'
+            font: '1.0'
+            device: normal
+          - stage: candidate
+            theme: 'no'
+            font: '1.5'
+            device: normal
+          - stage: candidate
+            theme: 'no'
+            font: '2.0'
+            device: compact
+    env:
+      QA_STAGE: ${{ matrix.stage }}
+      QA_THEME: ${{ matrix.theme }}
+      QA_FONT: ${{ matrix.font }}
+      QA_DEVICE: ${{ matrix.device }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -31,8 +81,10 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Assemble unchanged Build 23 baseline
+        if: matrix.stage == 'baseline'
         run: gradle -p before :app:assembleDebug --no-daemon --console=plain
       - name: Assemble candidate Android design APK
+        if: matrix.stage == 'candidate'
         run: gradle :app:assembleDebug --no-daemon --console=plain
       - name: Configure KVM acceleration with software fallback
         id: kvm
@@ -56,7 +108,7 @@ jobs:
           free -h
           df -h
           nproc
-      - name: Capture baseline and redesigned UI at 100%, 150% and 200% font scale
+      - name: Capture isolated visual configuration
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -80,7 +132,34 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: AddisReel-visual-before-after
+          name: visual-${{ matrix.stage }}-${{ matrix.theme }}-${{ matrix.font }}
           path: visual-qa/
           if-no-files-found: warn
           retention-days: 21
+  verify-all-captures:
+    needs: device-screenshots
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: visual-*
+          path: visual-qa
+          merge-multiple: true
+      - name: Verify complete capture matrix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          root=Path('visual-qa')
+          expected=set()
+          for stage in ('baseline','candidate'):
+              for theme in ('yes','no'):
+                  for font in ('1.0','1.5','2.0') if stage=='candidate' else ('1.0','1.5'):
+                      device='compact' if font=='2.0' else 'normal'
+                      group=[f'{stage}-{device}-{theme}-font{font}-{tab}' for tab in ('home','watch','library','premium')]
+                      expected.update(group)
+                      assert len({sha256((root/(x+'.png')).read_bytes()).hexdigest() for x in group})>=3, group
+          assert {p.stem for p in root.glob('*.png')}==expected
+          assert {p.stem for p in root.glob('*.xml')}==expected
+          print('40 screenshots and 40 accessibility trees present; manual visual approval still required.')
+          PY
