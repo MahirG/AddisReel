@@ -15,4 +15,24 @@
     <string name="theme_light">ብርሃን</string>
     <string name="theme_dark">ጨለማ</string>
     <string name="app_updates">የመተግበሪያ ዝማኔዎች</string>
+    <string name="studio_title">የፈጣሪዎች ስቱዲዮ</string>
+    <string name="studio_back">ተመለስ</string>
+    <string name="studio_menu">ምናሌ</string>
+    <string name="studio_section_content">የይዘት ስቱዲዮ</string>
+    <string name="studio_section_creators">ፊልም ሰሪዎች</string>
+    <string name="studio_section_rights">ልዩ መብቶች</string>
+    <string name="studio_refresh">አድስ</string>
+    <string name="studio_blocked_link">በመተግበሪያው ውስጥ የAddisReel ስቱዲዮ ገጾች ብቻ ይፈቀዳሉ።</string>
+    <string name="studio_network_error">ከስቱዲዮው ጋር መገናኘት አልተቻለም። ኢንተርኔትን ያረጋግጡ።</string>
+    <string name="studio_tls_error">ደህንነቱ የተጠበቀ ግንኙነት አልተሳካም።</string>
+    <string name="studio_picker_error">የሰነድ መምረጫውን መክፈት አልተቻለም።</string>
+    <string name="studio_download_blocked">በስቱዲዮው ውስጥ የተጠበቁ የስምምነት PDF ሰነዶች ብቻ ይከፈታሉ።</string>
+    <string name="studio_pdf_error">የስምምነቱን PDF መክፈት አልተቻለም። እንደገና ይግቡ።</string>
+    <string name="studio_pdf_title">የግል የተፈረመ ስምምነት</string>
+    <string name="studio_pdf_page_description">የስምምነት ሰነድ ገጽ</string>
+    <string name="studio_previous">ቀዳሚ</string>
+    <string name="studio_next">ቀጣይ</string>
+    <string name="creator_studio_admin_label">የፈጣሪዎች ስቱዲዮ · ለአስተዳዳሪዎች</string>
+    <string name="creator_studio_description">የፊልም ሰሪዎችን ማረጋገጫ እና የፊልም ስርጭት መብቶችን እዚሁ ያስተዳድሩ። የባለቤት መግቢያ ያስፈልጋል።</string>
+    <string name="creator_studio_open">የፈጣሪዎች ስቱዲዮን ክፈት</string>
 </resources>
