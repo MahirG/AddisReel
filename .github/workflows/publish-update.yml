@@ -151,6 +151,17 @@ jobs:
           ENDPOINT="https://$R2_ACCOUNT_ID.r2.cloudflarestorage.com"
           KEY="$(python3 -c 'import json; print(json.load(open("latest.json"))["objectKey"])')"
           VERSION="$(python3 -c 'import json; print(json.load(open("latest.json"))["version"])')"
+          # Fail closed on a stale versioned branch: never downgrade the live
+          # manifest even if an old release marker is pushed a second time.
+          if aws --endpoint-url "$ENDPOINT" s3 cp "s3://$R2_BUCKET/releases/latest.json" "$RUNNER_TEMP/current-latest.json" >/dev/null 2>&1; then
+            python3 - <<'PY'
+          import json,os,pathlib
+          current=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'current-latest.json').read_text())
+          next_release=json.loads(pathlib.Path('latest.json').read_text())
+          assert isinstance(current.get('versionCode'),int), 'Live release manifest is invalid'
+          assert next_release['versionCode'] > current['versionCode'], 'Release must increase versionCode; refusing downgrade'
+          PY
+          fi
           # Never overwrite an existing version; bump versionName and versionCode for each release.
           if aws --endpoint-url "$ENDPOINT" s3api head-object --bucket "$R2_BUCKET" --key "$KEY" >/dev/null 2>&1; then
             echo "::error::Release $VERSION already exists. Bump the app version before publishing."
