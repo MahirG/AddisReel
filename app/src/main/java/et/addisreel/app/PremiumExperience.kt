@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -150,34 +152,71 @@ internal fun PremiumExperience(onExplore:()->Unit){
 
 @Composable
 private fun PremiumHero(onExplore:()->Unit,onUpdates:()->Unit){
+    // Preserve accessibility font scaling; simplify information architecture rather than
+    // shrinking text or truncating the primary actions on compact 200%-font devices.
+    val compact=LocalConfiguration.current.screenWidthDp<400 && LocalDensity.current.fontScale>=1.65f
+    var expanded by remember { mutableStateOf(false) }
     Card(shape=RoundedCornerShape(26.dp),
         colors=CardDefaults.cardColors(containerColor=Color(0xFF1C1721)),
         modifier=Modifier.fillMaxWidth()){
         Column(Modifier.background(Brush.linearGradient(listOf(
             Color(0xFF17121B),Color(0xFF342338),Color(0xFF533B26))))
-            .padding(22.dp),verticalArrangement=Arrangement.spacedBy(13.dp)){
+            .padding(if(compact)14.dp else 22.dp),
+            verticalArrangement=Arrangement.spacedBy(if(compact)8.dp else 13.dp)){
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(7.dp)){
                 Icon(Icons.Default.Diamond,null,Modifier.size(18.dp),tint=Color(0xFFFFDB91))
-                Text(stringResource(R.string.premium_eyebrow),color=Color(0xFFFFDB91),
-                    style=MaterialTheme.typography.labelMedium,fontWeight=FontWeight.Bold,letterSpacing=1.sp)
+                Text(
+                    if(compact)"ADDISREEL" else stringResource(R.string.premium_eyebrow),
+                    color=Color(0xFFFFDB91),
+                    style=MaterialTheme.typography.labelMedium,
+                    fontWeight=FontWeight.Bold,
+                    letterSpacing=if(compact)0.sp else 1.sp
+                )
             }
-            Text(stringResource(R.string.premium_hero_title),color=Color.White,
-                style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold)
-            Text(stringResource(R.string.premium_hero_subtitle),
-                color=Color(0xFFE7DCE8),style=MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement=Arrangement.spacedBy(9.dp)){
-                Button(onClick=onExplore,modifier=Modifier.weight(1f).heightIn(min=48.dp),
+            Text(
+                stringResource(if(compact)R.string.premium_compact_title else R.string.premium_hero_title),
+                color=Color.White,
+                style=if(compact)MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                fontWeight=FontWeight.Bold
+            )
+            if(!compact || expanded) {
+                Text(stringResource(R.string.premium_hero_subtitle),
+                    color=Color(0xFFE7DCE8),
+                    style=if(compact)MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
+            }
+            if(compact){
+                TextButton(onClick={expanded=!expanded},modifier=Modifier.heightIn(min=48.dp)){
+                    Text(stringResource(if(expanded)R.string.premium_hide_details else R.string.premium_details),
+                        color=Color.White)
+                }
+                Button(onClick=onExplore,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),
                     colors=ButtonDefaults.buttonColors(
                         containerColor=Color(0xFFFFDC91),contentColor=Color(0xFF24190C))){
-                    Icon(Icons.Default.MovieFilter,null,Modifier.size(17.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.premium_browse),maxLines=1,overflow=TextOverflow.Ellipsis)
+                    Icon(Icons.Default.MovieFilter,null,Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.premium_browse))
                 }
-                OutlinedButton(onClick=onUpdates,modifier=Modifier.weight(1f).heightIn(min=48.dp)){
-                    Icon(Icons.Default.CloudDownload,null,Modifier.size(17.dp),tint=Color.White)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.premium_updates_shortcut),maxLines=1,
-                        overflow=TextOverflow.Ellipsis,color=Color.White)
+                OutlinedButton(onClick=onUpdates,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)){
+                    Icon(Icons.Default.CloudDownload,null,Modifier.size(18.dp),tint=Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.premium_updates_shortcut),color=Color.White)
+                }
+            }else{
+                Row(horizontalArrangement=Arrangement.spacedBy(9.dp)){
+                    Button(onClick=onExplore,modifier=Modifier.weight(1f).heightIn(min=48.dp),
+                        colors=ButtonDefaults.buttonColors(
+                            containerColor=Color(0xFFFFDC91),contentColor=Color(0xFF24190C))){
+                        Icon(Icons.Default.MovieFilter,null,Modifier.size(17.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.premium_browse),maxLines=1,
+                            overflow=TextOverflow.Ellipsis)
+                    }
+                    OutlinedButton(onClick=onUpdates,modifier=Modifier.weight(1f).heightIn(min=48.dp)){
+                        Icon(Icons.Default.CloudDownload,null,Modifier.size(17.dp),tint=Color.White)
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.premium_updates_shortcut),maxLines=1,
+                            overflow=TextOverflow.Ellipsis,color=Color.White)
+                    }
                 }
             }
         }
@@ -216,14 +255,24 @@ private fun PremiumPremieres(){
         }
     }
     Column(verticalArrangement=Arrangement.spacedBy(12.dp)){
-        Row(verticalAlignment=Alignment.CenterVertically){
-            Column(Modifier.weight(1f)){
-                PremiumHeading(stringResource(R.string.premium_premieres_heading),
-                    stringResource(R.string.premium_premieres_description))
-            }
-            TextButton(onClick={refresh++},enabled=!loading){
+        val compact=LocalConfiguration.current.screenWidthDp<400 && LocalDensity.current.fontScale>=1.65f
+        if(compact){
+            PremiumHeading(stringResource(R.string.premium_premieres_heading),
+                stringResource(R.string.premium_premieres_description))
+            TextButton(onClick={refresh++},enabled=!loading,modifier=Modifier.align(Alignment.End)){
                 Icon(Icons.Default.Refresh,null,Modifier.size(18.dp))
                 Text(stringResource(R.string.premium_refresh))
+            }
+        }else{
+            Row(verticalAlignment=Alignment.CenterVertically){
+                Column(Modifier.weight(1f)){
+                    PremiumHeading(stringResource(R.string.premium_premieres_heading),
+                        stringResource(R.string.premium_premieres_description))
+                }
+                TextButton(onClick={refresh++},enabled=!loading){
+                    Icon(Icons.Default.Refresh,null,Modifier.size(18.dp))
+                    Text(stringResource(R.string.premium_refresh))
+                }
             }
         }
         when{
