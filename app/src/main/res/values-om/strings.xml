@@ -15,4 +15,24 @@
     <string name="theme_light">Ifaa</string>
     <string name="theme_dark">Dukkana</string>
     <string name="app_updates">Haaromsa appii</string>
+    <string name="studio_title">Istuudiyoo Uumtootaa</string>
+    <string name="studio_back">Duubatti</string>
+    <string name="studio_menu">Baafata</string>
+    <string name="studio_section_content">Istuudiyoo Qabiyyee</string>
+    <string name="studio_section_creators">Hojjettoota fiilmii</string>
+    <string name="studio_section_rights">Mirga addaa</string>
+    <string name="studio_refresh">Haaromsi</string>
+    <string name="studio_blocked_link">Appii keessatti fuulonni AddisReel Studio amanamoo ta’an qofa ni hayyamamu.</string>
+    <string name="studio_network_error">Istuudiyoo waliin wal qunnamuun hin danda’amne. Intarneetii ilaali.</string>
+    <string name="studio_tls_error">Walqunnamtiin nageenya qabu hin milkoofne.</string>
+    <string name="studio_picker_error">Filannoo galmee banuun hin danda’amne.</string>
+    <string name="studio_download_blocked">PDF waliigaltee eegame qofa Istuudiyoo keessatti banamuu danda’a.</string>
+    <string name="studio_pdf_error">PDF waliigaltee eegame banuun hin danda’amne. Irra deebi’ii seeni.</string>
+    <string name="studio_pdf_title">Waliigaltee mallattaa’e dhuunfaa</string>
+    <string name="studio_pdf_page_description">Fuula galmee waliigaltee</string>
+    <string name="studio_previous">Dura</string>
+    <string name="studio_next">Itti aanu</string>
+    <string name="creator_studio_admin_label">Istuudiyoo Uumtootaa · Hojjettoota qofa</string>
+    <string name="creator_studio_description">Mirkaneessa hojjettoota fiilmii fi mirga fiilmii AddisReel keessatti bulchi. Seensa abbaa herregaa barbaachisa.</string>
+    <string name="creator_studio_open">Istuudiyoo Uumtootaa bani</string>
 </resources>
