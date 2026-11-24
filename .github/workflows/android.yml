@@ -48,6 +48,7 @@ jobs:
           set -euo pipefail
           ROOT=https://addisreel-catalog.eddieaman475.workers.dev
           curl -fsS "$ROOT/health" | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=5 and "processor-job-recovery" in x["features"]'
+          curl -fsS "$ROOT/health/ready" | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=5 and "processing-jobs" in x["checks"]'
           curl -fsS "$ROOT/v1/catalog" | python3 -c 'import sys,json;assert isinstance(json.load(sys.stdin)["series"],list)'
           curl -fsS "$ROOT/admin/client.js" -o "$RUNNER_TEMP/addisreel-studio-client.js"
           grep -q 'Retry processing' "$RUNNER_TEMP/addisreel-studio-client.js"
