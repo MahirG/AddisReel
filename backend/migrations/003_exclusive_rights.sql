@@ -5,8 +5,14 @@ CREATE TABLE IF NOT EXISTS grandfathered_rights (
  series_id TEXT PRIMARY KEY NOT NULL REFERENCES series(id) ON DELETE CASCADE,
  grandfathered_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS rights_migration_meta (
+ key TEXT PRIMARY KEY NOT NULL,
+ applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 INSERT OR IGNORE INTO grandfathered_rights(series_id)
- SELECT id FROM series WHERE status='published' AND licensed=1;
+ SELECT id FROM series WHERE status='published' AND licensed=1
+ AND NOT EXISTS(SELECT 1 FROM rights_migration_meta WHERE key='grandfather_snapshot');
+INSERT OR IGNORE INTO rights_migration_meta(key) VALUES ('grandfather_snapshot');
 
 CREATE TABLE IF NOT EXISTS title_rights (
  id TEXT PRIMARY KEY NOT NULL,
