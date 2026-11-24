@@ -99,12 +99,13 @@ private fun posterVariant(url: String?, widthPx: Int): String? {
 @Composable
 private fun posterModel(url: String?, widthPx: Int = NetworkBudgetPolicy.posterWidthForTile(142), heightPx: Int = 480): ImageRequest {
     val context = LocalContext.current
-    return remember(context, url, widthPx, heightPx) {
+    val reducedMotion = AddisMotion.isReduced()
+    return remember(context, url, widthPx, heightPx, reducedMotion) {
         ImageRequest.Builder(context)
             .data(posterVariant(url, widthPx))
             .size(widthPx, heightPx)
             .precision(Precision.INEXACT)
-            .crossfade(180)
+            .crossfade(AddisMotion.duration(AddisMotion.quickMs, reducedMotion))
             .build()
     }
 }
@@ -490,14 +491,14 @@ private fun AddisReelApp() {
             title = { Text("Clear viewing history?") },
             text = { Text("This removes the recently watched list on this device. Saved dramas and completed episode records will remain.") },
             confirmButton = {
-                TextButton(onClick = {
+                AddisTextButton(onClick = {
                     viewingHistory = emptyList()
                     recentlyWatched = ""
                     preferences.edit().remove("viewing_history").remove("recently_watched").apply()
                     confirmClearHistory = false
                 }) { Text("Clear history") }
             },
-            dismissButton = { TextButton(onClick = { confirmClearHistory = false }) { Text("Keep history") } }
+            dismissButton = { AddisTextButton(onClick = { confirmClearHistory = false }) { Text("Keep history") } }
         )
     }
     Box { // All screens and dialogs now inherit the single root AddisReelTheme.
@@ -510,7 +511,7 @@ private fun AddisReelApp() {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(drama.genre + "  •  " + drama.episodes + " episodes", color = Gold)
                         Text(drama.description)
-                        TextButton(onClick = {
+                        AddisTextButton(onClick = {
                             val message = "Discover ${drama.title} on AddisReel — ${drama.genre}, ${drama.episodes} short episodes."
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
@@ -530,7 +531,7 @@ private fun AddisReelApp() {
                     }
                 },
                 confirmButton = {
-                    Button(onClick = {
+                    AddisButton(onClick = {
                         selectDrama(drama)
                         detailDrama = null
                         tab = 0
@@ -540,7 +541,7 @@ private fun AddisReelApp() {
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = {
+                    AddisTextButton(onClick = {
                         toggleSaved(drama.title)
                     }) {
                         Icon(
@@ -649,8 +650,11 @@ private fun AddisReelApp() {
                 }
             }
         }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                when(tab) {
+            // Keep tablet UI centered and readable rather than stretching cards,
+            // captions and player controls edge-to-edge across huge widths.
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
+                Column(Modifier.widthIn(max = 840.dp).fillMaxWidth().fillMaxHeight()) {
+                    when(tab) {
                     0 -> {
                         Box(
                             Modifier.weight(1f).fillMaxWidth()
@@ -731,7 +735,7 @@ private fun AddisReelApp() {
                                     }
                                     if (selected.id.isNotBlank() && !streamLoading) {
                                         Spacer(Modifier.height(12.dp))
-                                        Button(onClick = {
+                                        AddisButton(onClick = {
                                             // Force a fresh playback URL; never reuse a failed prefetched token.
                                             prefetchedEpisode = null
                                             streamRefresh += 1
@@ -745,7 +749,7 @@ private fun AddisReelApp() {
                                     Text("Swipe up for next episode · down for previous", fontSize = AddisTypeSize.micro, color=Color.Gray)
                                 }
                             }
-                            IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(AddisSpacing.compact).background(Color(0x990C0C10), RoundedCornerShape(50))) {
+                            AddisIconAction(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(AddisSpacing.compact).background(Color(0x990C0C10), RoundedCornerShape(50))) {
                                 Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = AddisCinema.accent)
                             }
                             // Two compact rows keep cinema controls usable on narrow phones.
@@ -763,7 +767,7 @@ private fun AddisReelApp() {
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                    IconButton(
+                                    AddisIconAction(
                                         onClick = { selectEpisode(episode - 1) },
                                         enabled = episode > 1
                                     ) {
@@ -775,13 +779,13 @@ private fun AddisReelApp() {
                                         fontSize = AddisTypeSize.caption,
                                         fontWeight = AddisTypeWeight.strong
                                     )
-                                    IconButton(
+                                    AddisIconAction(
                                         onClick = { selectEpisode(episode + 1) },
                                         enabled = episode < selected.episodes
                                     ) {
                                         Icon(Icons.Default.SkipNext, contentDescription = "Next episode", tint = if (episode < selected.episodes) AddisCinema.accent else Color.Gray)
                                     }
-                                    IconButton(onClick = { showEpisodes = true }) {
+                                    AddisIconAction(onClick = { showEpisodes = true }) {
                                         Icon(Icons.Default.VideoLibrary, contentDescription = "All episodes", tint = AddisCinema.accent)
                                     }
                                     }
@@ -791,7 +795,7 @@ private fun AddisReelApp() {
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
                                     ) {
-                                    IconButton(onClick = {
+                                    AddisIconAction(onClick = {
                                         subtitlesEnabled = !subtitlesEnabled
                                         preferences.edit().putBoolean("cinema_subtitles", subtitlesEnabled).apply()
                                     }) {
@@ -802,7 +806,7 @@ private fun AddisReelApp() {
                                         )
                                     }
                                     Box {
-                                        TextButton(onClick = { qualityMenuExpanded = true }) {
+                                        AddisTextButton(onClick = { qualityMenuExpanded = true }) {
                                             Text(videoQuality, color = AddisCinema.accent, fontSize = AddisTypeSize.caption)
                                         }
                                         DropdownMenu(expanded = qualityMenuExpanded, onDismissRequest = { qualityMenuExpanded = false }) {
@@ -816,7 +820,7 @@ private fun AddisReelApp() {
                                         }
                                     }
                                     Box {
-                                        TextButton(onClick = { speedMenuExpanded = true }) {
+                                        AddisTextButton(onClick = { speedMenuExpanded = true }) {
                                             Text("${playbackSpeed}×", color = AddisCinema.accent, fontSize = AddisTypeSize.caption)
                                         }
                                         DropdownMenu(expanded = speedMenuExpanded, onDismissRequest = { speedMenuExpanded = false }) {
@@ -829,7 +833,7 @@ private fun AddisReelApp() {
                                             }
                                         }
                                     }
-                                    IconButton(onClick = {
+                                    AddisIconAction(onClick = {
                                         fillVideo = !fillVideo
                                         preferences.edit().putBoolean("cinema_fill_video", fillVideo).apply()
                                     }) {
@@ -839,7 +843,7 @@ private fun AddisReelApp() {
                                             tint = AddisCinema.accent
                                         )
                                     }
-                                    IconButton(onClick = {
+                                    AddisIconAction(onClick = {
                                         autoNextEnabled = !autoNextEnabled
                                         preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
                                     }) {
@@ -852,13 +856,13 @@ private fun AddisReelApp() {
                                 }
                             }
                             if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)) {
-                                FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
+                                AddisFilledIconAction(onClick = { toggleSaved(selected.title) }) {
                                     Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
                                 }
-                                FilledTonalIconButton(onClick = { showEpisodes = true }) {
+                                AddisFilledIconAction(onClick = { showEpisodes = true }) {
                                     Icon(Icons.Default.VideoLibrary, contentDescription = "Choose episode")
                                 }
-                                FilledTonalIconButton(onClick = { detailDrama = selected }) {
+                                AddisFilledIconAction(onClick = { detailDrama = selected }) {
                                     Icon(Icons.Default.Info, contentDescription = "Series information")
                                 }
                             }
@@ -870,8 +874,8 @@ private fun AddisReelApp() {
                                 Text(selected.description, modifier = Modifier.clickable { showFullDescription = !showFullDescription }, maxLines = if (showFullDescription) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, color=Color.LightGray)
                                 Text(if (showFullDescription) "Show less" else "More about this story", modifier = Modifier.clickable { showFullDescription = !showFullDescription }, fontSize = AddisTypeSize.micro, color = AddisCinema.accent)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
-                                    TextButton(onClick = {
+                                    AddisTextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
+                                    AddisTextButton(onClick = {
                                         autoNextEnabled = !autoNextEnabled
                                         preferences.edit().putBoolean("cinema_auto_next", autoNextEnabled).apply()
                                     }) {
@@ -882,8 +886,8 @@ private fun AddisReelApp() {
                                 }
                                 Spacer(Modifier.height(12.dp))
                                 Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                                    OutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
-                                    Button(onClick={selectEpisode(episode+1)},enabled=episode<selected.episodes) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
+                                    AddisOutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
+                                    AddisButton(onClick={selectEpisode(episode+1)},enabled=episode<selected.episodes) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
 
                                 }
                             }
@@ -894,11 +898,13 @@ private fun AddisReelApp() {
                     }
                     1 -> {
                         Row(Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.standard, vertical = AddisSpacing.small), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column {
+                            Column(Modifier.weight(1f)) {
                                 AddisSectionTitle("AddisReel")
-                                Text(stringResource(R.string.home_tagline), style = AddisScript.style(stringResource(R.string.home_tagline), MaterialTheme.typography.bodySmall), color = AddisColors.textSecondary)
+                                Text(stringResource(R.string.home_tagline),
+                                    style = AddisScript.style(stringResource(R.string.home_tagline), MaterialTheme.typography.bodySmall),
+                                    color = AddisColors.textSecondary, maxLines = 2)
                             }
-                            IconButton(onClick = {
+                            AddisIconAction(onClick = {
                                 homeSearchExpanded = !homeSearchExpanded
                                 if (!homeSearchExpanded) { discoverQuery = ""; discoverGenre = "All"; discoverSort = "Featured"; discoverOnlySaved = false; discoverOnlyUnwatched = false }
                             }) {
@@ -919,7 +925,7 @@ private fun AddisReelApp() {
                                 }, modifier=Modifier.weight(1f), fontSize = AddisTypeSize.micro, color=Gold
                             )
                             if (catalogStatus != "cached" && catalogStatus != "loading") {
-                                TextButton(onClick={ catalogStatus = "loading"; catalogRefreshRequest++ }) {
+                                AddisTextButton(onClick={ catalogStatus = "loading"; catalogRefreshRequest++ }) {
                                     Icon(Icons.Default.Refresh, contentDescription=null, modifier=Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Retry", fontSize = AddisTypeSize.caption)
@@ -994,7 +1000,7 @@ private fun AddisReelApp() {
                                 singleLine = true,
                                 trailingIcon = {
                                     if (discoverQuery.isNotEmpty()) {
-                                        IconButton(onClick = { discoverQuery = "" }) {
+                                        AddisIconAction(onClick = { discoverQuery = "" }) {
                                             Icon(Icons.Default.Clear, contentDescription = "Clear search")
                                         }
                                     }
@@ -1030,7 +1036,7 @@ private fun AddisReelApp() {
                             if (homeSearchExpanded) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = AddisSpacing.compact, vertical = AddisSpacing.micro), horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
                                 AddisChoiceChip(selected = discoverOnlySaved, onClick = { discoverOnlySaved = !discoverOnlySaved }, label = { Text("Saved only") })
                                 AddisChoiceChip(selected = discoverOnlyUnwatched, onClick = { discoverOnlyUnwatched = !discoverOnlyUnwatched }, label = { Text("Not completed") })
-                                if (discoverOnlySaved || discoverOnlyUnwatched) TextButton(onClick = { discoverOnlySaved = false; discoverOnlyUnwatched = false }) { Text("Reset") }
+                                if (discoverOnlySaved || discoverOnlyUnwatched) AddisTextButton(onClick = { discoverOnlySaved = false; discoverOnlyUnwatched = false }) { Text("Reset") }
                             }
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
@@ -1070,7 +1076,7 @@ private fun AddisReelApp() {
                                             featured.episodes
                                         )
                                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AddisSpacing.compact)) {
-                                            Button(onClick = {
+                                            AddisButton(onClick = {
                                                 selectDrama(featured)
                                                 selectEpisode(if (featuredCompleted) 1 else featuredResume)
                                                 tab = 0
@@ -1079,7 +1085,7 @@ private fun AddisReelApp() {
                                                 Spacer(Modifier.width(6.dp))
                                                 Text(if (featuredCompleted) "Watch Again" else if (featuredResume > 1) "Resume Episode $featuredResume" else "Start Watching", maxLines = 1)
                                             }
-                                            OutlinedButton(onClick = { toggleSaved(featured.title) }) {
+                                            AddisOutlinedButton(onClick = { toggleSaved(featured.title) }) {
                                                 Icon(if (featured.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = if (featured.title in saved) "Remove from My List" else "Add to My List")
                                             }
                                         }
@@ -1094,7 +1100,7 @@ private fun AddisReelApp() {
                                         Column(verticalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                                 Text("Continue Watching", fontSize = AddisTypeSize.headingSmall, fontWeight = AddisTypeWeight.strong, lineHeight = AddisLineHeight.headline)
-                                                TextButton(onClick = { tab = 2; libraryFilter = "History" }) { Text("See all") }
+                                                AddisTextButton(onClick = { tab = 2; libraryFilter = "History" }) { Text("See all") }
                                             }
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -1164,7 +1170,7 @@ private fun AddisReelApp() {
                                                 Text("You've finished your recent stories. Find what to watch next.",
                                                     fontSize = AddisTypeSize.caption, color = AddisColors.textSecondary, lineHeight = AddisLineHeight.caption)
                                             }
-                                            TextButton(onClick = { tab = 2; libraryFilter = "Completed" }) { Text("View") }
+                                            AddisTextButton(onClick = { tab = 2; libraryFilter = "Completed" }) { Text("View") }
                                         }
                                     }
                                 }
@@ -1274,7 +1280,7 @@ private fun AddisReelApp() {
                                             Spacer(Modifier.height(12.dp))
                                             Text("No stories found", fontWeight = AddisTypeWeight.strong, fontSize = AddisTypeSize.title, lineHeight = AddisLineHeight.headline)
                                             Text("Try a different title, genre, or filter.", color = AddisColors.textSecondary, fontSize = AddisTypeSize.bodySmall, lineHeight = AddisLineHeight.description, textAlign = TextAlign.Center)
-                                            TextButton(onClick = { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false; discoverSort = "Featured" }) { Text("Clear filters") }
+                                            AddisTextButton(onClick = { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false; discoverSort = "Featured" }) { Text("Clear filters") }
                                         }
                                     }
                                 }
@@ -1304,7 +1310,7 @@ private fun AddisReelApp() {
                         }
                         if (libraryFilter == "History" && viewingHistory.isNotEmpty()) {
                             Row(Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.standard), horizontalArrangement = Arrangement.End) {
-                                TextButton(onClick = {
+                                AddisTextButton(onClick = {
                                     confirmClearHistory = true
                                 }) {
                                     Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(17.dp))
@@ -1358,7 +1364,7 @@ private fun AddisReelApp() {
                                 Icon(if (libraryFilter == "History") Icons.Default.History else if (libraryFilter == "Completed") Icons.Default.CheckCircle else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
                                 Text(when (libraryFilter) { "History" -> "No recently watched dramas"; "Completed" -> "No completed dramas yet"; else -> "Your collection starts here" }, fontSize = AddisTypeSize.title, fontWeight = AddisTypeWeight.strong)
                                 Text(when (libraryFilter) { "History" -> "Stories you start watching will appear here."; "Completed" -> "Complete a series to add it to your finished stories."; else -> "Bookmark the stories you love and return anytime." }, color = AddisColors.textSecondary)
-                                Button(onClick = { tab = 1 }) { Text("Discover Stories") }
+                                AddisButton(onClick = { tab = 1 }) { Text("Discover Stories") }
                             }
                         } else {
                             LazyColumn(
@@ -1387,10 +1393,12 @@ private fun AddisReelApp() {
                                                     fullyWatched -> "Watch again · Episode 1"
                                                     started -> "Continue · Episode $continueEpisode of ${drama.episodes}"
                                                     else -> "Start watching · Episode 1"
-                                                }, color = Gold, fontSize = AddisTypeSize.caption
+                                                }, color = Gold, fontSize = AddisTypeSize.caption,
+                                                modifier = Modifier.weight(1f), maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                             if (libraryFilter == "Saved") {
-                                                TextButton(onClick = { toggleSaved(drama.title) }) {
+                                                AddisTextButton(onClick = { toggleSaved(drama.title) }) {
                                                     Icon(Icons.Default.BookmarkRemove, contentDescription = null, modifier = Modifier.size(16.dp))
                                                     Text("Remove")
                                                 }
@@ -1429,6 +1437,7 @@ private fun AddisReelApp() {
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -1875,7 +1884,7 @@ private fun AddisReelApp() {
                 if (hasNextEpisode) {
                     Text(if (autoPlayNext) "Next episode in $nextCountdown" else "Episode complete", color = Color.White, fontSize = AddisTypeSize.body)
                     Spacer(Modifier.height(10.dp))
-                    Button(onClick = {
+                    AddisButton(onClick = {
                         if (!nextRequested) {
                             nextRequested = true
                             currentOnEpisodeCompleted()
@@ -1885,10 +1894,10 @@ private fun AddisReelApp() {
                         Spacer(Modifier.width(6.dp))
                         Text("Play next now")
                     }
-                    TextButton(onClick = onAutoNextToggle) {
+                    AddisTextButton(onClick = onAutoNextToggle) {
                         Text(if (autoPlayNext) "Cancel autoplay" else "Enable autoplay", color = AddisCinema.accent)
                     }
-                    TextButton(onClick = {
+                    AddisTextButton(onClick = {
                         nextRequested = false
                         playbackEnded = false
                         nextCountdown = 3
@@ -1898,7 +1907,7 @@ private fun AddisReelApp() {
                 } else {
                     Text("You finished this series", color = Color.White)
                     Spacer(Modifier.height(8.dp))
-                    Button(onClick = {
+                    AddisButton(onClick = {
                         playbackEnded = false
                         nextRequested = false
                         nextCountdown = 3
@@ -1931,7 +1940,7 @@ private fun AddisReelApp() {
                 if (retryPending && isOnline) {
                     CircularProgressIndicator(color = AddisCinema.accent, modifier = Modifier.size(24.dp))
                 } else if (isOnline && inForeground && !credentialRejected) {
-                    Button(onClick = {
+                    AddisButton(onClick = {
                         retryCount = 0
                         failurePositionMs = player.currentPosition.coerceAtLeast(failurePositionMs)
                         player.seekTo(failurePositionMs)
