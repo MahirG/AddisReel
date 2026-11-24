@@ -637,7 +637,7 @@ private fun AddisReelApp() {
                         selected=tab==index,
                         onClick={tab=index},
                         icon={Icon(icon,contentDescription=name)},
-                        label={Text(name, style=AddisScript.style(name, MaterialTheme.typography.labelMedium), maxLines=2, overflow=TextOverflow.Ellipsis)},
+                        label=if (androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 400 && androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.8f) null else ({ Text(name, style=AddisScript.style(name, MaterialTheme.typography.labelMedium), maxLines=1, softWrap=false, overflow=TextOverflow.Ellipsis) }),
                         alwaysShowLabel=false,
                         colors=NavigationBarItemDefaults.colors(
                             selectedIconColor=AddisColors.current.onAccent,
