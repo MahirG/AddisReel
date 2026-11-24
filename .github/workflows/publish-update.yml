@@ -2,13 +2,14 @@ name: Publish AddisReel in-app update
 on:
   # Explicit one-time promotion per tested, versioned branch; never publish on arbitrary pushes.
   push:
-    branches: ['feature/android-v080-cinematic-experience', 'feature/android-v090-continuity-polish', 'feature/addisreel-v100-foundation', 'feature/addisreel-v110-smart-discovery', 'feature/addisreel-v120-fast-start']
+    branches: ['feature/android-v080-cinematic-experience', 'feature/android-v090-continuity-polish', 'feature/addisreel-v100-foundation', 'feature/addisreel-v110-smart-discovery', 'feature/addisreel-v120-fast-start', 'feature/addisreel-v130-network-smart-player']
     paths:
       - '.release/0.8.0-publish.json'
       - '.release/0.9.0-publish.json'
       - '.release/1.0.0-publish.json'
       - '.release/1.1.0-publish.json'
       - '.release/1.2.0-publish.json'
+      - '.release/1.3.0-publish.json'
   workflow_dispatch:
     inputs:
       release_notes:
@@ -31,7 +32,7 @@ jobs:
   publish:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.confirm_publish == 'PUBLISH') ||
-      (github.event_name == 'push' && (github.ref == 'refs/heads/feature/android-v080-cinematic-experience' || github.ref == 'refs/heads/feature/android-v090-continuity-polish' || github.ref == 'refs/heads/feature/addisreel-v100-foundation' || github.ref == 'refs/heads/feature/addisreel-v110-smart-discovery' || github.ref == 'refs/heads/feature/addisreel-v120-fast-start'))
+      (github.event_name == 'push' && (github.ref == 'refs/heads/feature/android-v080-cinematic-experience' || github.ref == 'refs/heads/feature/android-v090-continuity-polish' || github.ref == 'refs/heads/feature/addisreel-v100-foundation' || github.ref == 'refs/heads/feature/addisreel-v110-smart-discovery' || github.ref == 'refs/heads/feature/addisreel-v120-fast-start' || github.ref == 'refs/heads/feature/addisreel-v130-network-smart-player'))
     runs-on: ubuntu-latest
     timeout-minutes: 40
     environment: production-updates
@@ -55,7 +56,7 @@ jobs:
           python3 - <<'PY'
           import json,re,pathlib,os
           branch=os.environ['GITHUB_REF_NAME']
-          expected={'feature/android-v080-cinematic-experience':('0.8.0',17),'feature/android-v090-continuity-polish':('0.9.0',18),'feature/addisreel-v100-foundation':('1.0.0',19),'feature/addisreel-v110-smart-discovery':('1.1.0',20),'feature/addisreel-v120-fast-start':('1.2.0',21)}
+          expected={'feature/android-v080-cinematic-experience':('0.8.0',17),'feature/android-v090-continuity-polish':('0.9.0',18),'feature/addisreel-v100-foundation':('1.0.0',19),'feature/addisreel-v110-smart-discovery':('1.1.0',20),'feature/addisreel-v120-fast-start':('1.2.0',21),'feature/addisreel-v130-network-smart-player':('1.3.0',22)}
           assert branch in expected, 'Unexpected publishing branch'
           version,code=expected[branch]
           approved=json.loads(pathlib.Path(f'.release/{version}-publish.json').read_text())
@@ -103,6 +104,21 @@ jobs:
           test -n "$ETAG" || { echo "::error::Catalog ETag missing"; exit 1; }
           STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$URL/v1/catalog")
           test "$STATUS" = 304 || { echo "::error::Catalog conditional cache unavailable: $STATUS"; exit 1; }
+      - name: Verify licensed catalog and playback security for Build 22
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/addisreel-v130-network-smart-player'
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="https://addisreel-catalog.eddieaman475.workers.dev"
+          curl -fsS "$URL/health/ready" | python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=6 and "catalog-db" in x["checks"]'
+          curl -fsS -D "$RUNNER_TEMP/catalog-headers" "$URL/v1/catalog" -o "$RUNNER_TEMP/catalog.json"
+          python3 -c 'import json,sys;assert isinstance(json.load(open(sys.argv[1]))["series"],list)' "$RUNNER_TEMP/catalog.json"
+          ETAG=$(grep -i '^etag:' "$RUNNER_TEMP/catalog-headers" | cut -d' ' -f2- | tr -d '\r')
+          test -n "$ETAG" || { echo "::error::Missing catalog ETag"; exit 1; }
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$URL/v1/catalog")
+          test "$STATUS" = 304 || { echo "::error::Conditional catalog failed: $STATUS"; exit 1; }
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "$URL/v1/processor/jobs/11111111-1111-4111-8111-111111111111/source")
+          test "$STATUS" = 401 || { echo "::error::Processor endpoint auth failed: $STATUS"; exit 1; }
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -159,7 +175,7 @@ jobs:
           print('Verified:', package, version, code, digest)
           PY
         env:
-          RELEASE_NOTES: ${{ inputs.release_notes || (github.ref == 'refs/heads/feature/addisreel-v120-fast-start' && '🎬 AddisReel 1.2.0 — Faster cold starts with a 24-hour offline catalog snapshot, efficient ETag refresh, a reconnect retry, and safer public-content validation.' || (github.ref == 'refs/heads/feature/addisreel-v110-smart-discovery' && '🎬 AddisReel 1.1.0 — Smarter private drama recommendations, Wi-Fi HLS episode preloading, safer processing recovery and duplicate-job prevention. An external FFmpeg processor is still needed for automatic conversion.' || (github.ref == 'refs/heads/feature/addisreel-v100-foundation' && '🎬 AddisReel 1.0.0 — Faster adaptive video playback, resumable large MP4 uploads, authenticated FFmpeg processing integration, and a new operations dashboard. Stream encoding requires a connected FFmpeg host.' || '🎬 AddisReel — Reliable streaming, improved posters and playback continuity.'))) }}
+          RELEASE_NOTES: ${{ inputs.release_notes || (github.ref == 'refs/heads/feature/addisreel-v130-network-smart-player' && '🎬 AddisReel 1.3.0 — Network-smart playback with no video requests while browsing, near-end next-episode preparation, responsive 320px poster tiles, and battery-friendly Wi-Fi preloading.' || (github.ref == 'refs/heads/feature/addisreel-v120-fast-start' && '🎬 AddisReel 1.2.0 — Faster cold starts with a 24-hour offline catalog snapshot, efficient ETag refresh, a reconnect retry, and safer public-content validation.' || (github.ref == 'refs/heads/feature/addisreel-v110-smart-discovery' && '🎬 AddisReel 1.1.0 — Smarter private drama recommendations, Wi-Fi HLS episode preloading, safer processing recovery and duplicate-job prevention. An external FFmpeg processor is still needed for automatic conversion.' || (github.ref == 'refs/heads/feature/addisreel-v100-foundation' && '🎬 AddisReel 1.0.0 — Faster adaptive video playback, resumable large MP4 uploads, authenticated FFmpeg processing integration, and a new operations dashboard. Stream encoding requires a connected FFmpeg host.' || '🎬 AddisReel — Reliable streaming, improved posters and playback continuity.')))) }}
       - name: Publish immutable APK, then update manifest
         shell: bash
         run: |
