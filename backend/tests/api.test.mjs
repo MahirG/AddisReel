@@ -20,6 +20,30 @@ test("health endpoint is reachable without exposing infrastructure secrets", asy
   assert.equal((await res.json()).status, "ok");
 });
 
+test("deep readiness requires D1 processing migration and media binding", async () => {
+  const ready = await worker.fetch(request("/health/ready"), {
+    DB:{prepare(){return {async first(){return null;}}}},
+    MEDIA:{}
+  });
+  assert.equal(ready.status,200);
+  const healthy = await ready.json();
+  assert.equal(healthy.status,"ok");
+  assert.ok(healthy.checks.includes("processing-jobs"));
+  assert.ok(!JSON.stringify(healthy).includes("token"));
+
+  const absent = await worker.fetch(request("/health/ready"), {
+    DB:{prepare(sql){if(sql.includes("video_processing_jobs"))throw Error("no such table");return {async first(){return null;}}}},
+    MEDIA:{}
+  });
+  assert.equal(absent.status,503);
+  assert.deepEqual(await absent.json(),{status:"degraded",service:"addisreel-catalog"});
+
+  const missingMedia=await worker.fetch(request("/health/ready"), {
+    DB:{prepare(){return {async first(){return null;}}}}
+  });
+  assert.equal(missingMedia.status,503);
+});
+
 test("public catalog is empty until licensed content has been published", async () => {
   const res = await worker.fetch(request("/v1/catalog"), { DB: emptyDB });
   assert.equal(res.status, 200);

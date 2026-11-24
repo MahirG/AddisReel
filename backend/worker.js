@@ -116,7 +116,19 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:4,features:["multipart-mp4","processor-hls","studio-ops"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:5,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery"]});
+      // Liveness alone cannot prove the D1 job migration was applied.
+      // Readiness is deliberately sanitized: no media keys, owner data or secrets.
+      if (request.method === "GET" && path === "/health/ready") {
+        if (!env.DB || !env.MEDIA) return reply({status:"degraded",service:"addisreel-catalog"},503);
+        try {
+          await env.DB.prepare("SELECT id FROM video_processing_jobs LIMIT 1").first();
+          await env.DB.prepare("SELECT id FROM series LIMIT 1").first();
+        } catch {
+          return reply({status:"degraded",service:"addisreel-catalog"},503);
+        }
+        return reply({status:"ok",service:"addisreel-catalog",phase:5,checks:["catalog-db","processing-jobs","media-binding"]});
+      }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
         return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
@@ -408,10 +420,33 @@ export default {
         }
         if (request.method === "GET" && path === "/v1/admin/processing-jobs") {
           const rows = await env.DB.prepare(
-            "SELECT id,series_id,episode_number,status,progress,error_message,created_at,updated_at " +
+            "SELECT id,series_id,episode_number,status,progress,error_message,created_at,updated_at, " +
+            "CASE WHEN status='processing' AND updated_at < datetime('now','-120 minutes') THEN 1 ELSE 0 END AS stalled " +
             "FROM video_processing_jobs ORDER BY created_at DESC LIMIT 100"
           ).all();
           return reply({jobs:rows.results},200,false);
+        }
+        const retryJob = /^\/v1\/admin\/processing-jobs\/([a-f0-9-]{36})\/retry$/.exec(path);
+        if (request.method === "POST" && retryJob) {
+          const job = await env.DB.prepare(
+            "SELECT j.source_key,j.status,e.status AS episode_status FROM video_processing_jobs j " +
+            "JOIN episodes e ON e.series_id=j.series_id AND e.number=j.episode_number WHERE j.id=?"
+          ).bind(retryJob[1]).first();
+          if (!job) return fail("Processing job not found",404,false);
+          if (job.episode_status !== "draft")
+            return fail("Only draft episodes may be processed",409,false);
+          if (!await env.MEDIA.head(job.source_key))
+            return fail("Original MP4 no longer exists",409,false);
+          // A 120-minute inactive lease is eligible for recovery. Active work
+          // cannot be interrupted or re-queued by another owner session.
+          const updated = await env.DB.prepare(
+            "UPDATE video_processing_jobs SET status='queued',progress=0,error_message=NULL, " +
+            "updated_at=datetime('now') WHERE id=? AND " +
+            "(status='failed' OR (status='processing' AND updated_at < datetime('now','-120 minutes')))"
+          ).bind(retryJob[1]).run();
+          if (!updated.meta?.changes)
+            return fail("Only failed or stalled processing jobs can be retried",409,false);
+          return reply({jobId:retryJob[1],status:"queued",requeued:true},200,false);
         }
         if (request.method === "POST" && path === "/v1/admin/processing-jobs") {
           const d = await inputJSON(request);
@@ -424,11 +459,23 @@ export default {
           const source = e.media_prefix + "/source.mp4";
           if (!await env.MEDIA.head(source)) return fail("Upload source.mp4 first",409,false);
           const jobId = crypto.randomUUID();
-          await env.DB.prepare(
+          // One active conversion per episode; an atomic INSERT avoids
+          // duplicate work if the owner taps Queue twice on a slow network.
+          const inserted = await env.DB.prepare(
             "INSERT INTO video_processing_jobs(id,series_id,episode_number,source_key,status) " +
-            "VALUES(?,?,?,?,'queued')"
-          ).bind(jobId,d.seriesId,d.episode,source).run();
-          return reply({jobId,status:"queued",message:"Job registered; external processor not connected"},202,false);
+            "SELECT ?,?,?,?,'queued' WHERE NOT EXISTS (" +
+            "SELECT 1 FROM video_processing_jobs WHERE series_id=? AND episode_number=? " +
+            "AND status IN ('queued','processing')) RETURNING id"
+          ).bind(jobId,d.seriesId,d.episode,source,d.seriesId,d.episode).first();
+          if (!inserted) {
+            const existing = await env.DB.prepare(
+              "SELECT id,status FROM video_processing_jobs WHERE series_id=? AND episode_number=? " +
+              "AND status IN ('queued','processing') ORDER BY created_at DESC LIMIT 1"
+            ).bind(d.seriesId,d.episode).first();
+            return reply({jobId:existing?.id || null,status:existing?.status || "queued",
+              message:"This episode already has an active processing job"},200,false);
+          }
+          return reply({jobId,status:"queued",message:"Job registered; waiting for an external FFmpeg processor"},202,false);
         }
         if (request.method === "GET" && path === "/v1/admin/series") {
           const s=await env.DB.prepare("SELECT * FROM series ORDER BY sort_order,created_at DESC").all();
