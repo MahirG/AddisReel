@@ -209,6 +209,33 @@ internal object AddisType {
     )
 }
 
+/** Legacy compact labels map to the same typography roles rather than raw sp values. */
+internal object AddisTypeSize {
+    val micro = 11.sp
+    val caption = AddisType.caption.fontSize
+    val label = 13.sp
+    val bodySmall = AddisType.description.fontSize
+    val body = AddisType.body.fontSize
+    val subtitle = AddisType.subtitle.fontSize
+    val title = AddisType.title.fontSize
+    val headingSmall = 24.sp
+    val heading = AddisType.headline.fontSize
+    val display = AddisType.display.fontSize
+}
+
+internal object AddisTypeWeight {
+    val strong = FontWeight.SemiBold
+    val medium = FontWeight.Medium
+    val regular = FontWeight.Normal
+}
+
+internal object AddisLineHeight {
+    val caption = AddisType.caption.lineHeight
+    val description = AddisType.description.lineHeight
+    val body = AddisType.body.lineHeight
+    val headline = AddisType.headline.lineHeight
+}
+
 /** Ethiopic occupies more vertical space than Latin. Never add letter spacing
  * to Amharic glyph clusters; Oromo/English keep the standard Latin metrics.
  */
