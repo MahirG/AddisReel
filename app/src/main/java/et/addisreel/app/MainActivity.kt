@@ -855,7 +855,9 @@ private fun AddisReelApp() {
                                     }
                                 }
                             }
-                            if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)) {
+                        }
+                        if (!cinemaMode) Column(Modifier.weight(1f).fillMaxWidth().background(AddisCinema.playerBackground).verticalScroll(rememberScrollState()).padding(AddisSpacing.comfortable)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AddisSpacing.compact), verticalAlignment = Alignment.CenterVertically) {
                                 AddisFilledIconAction(onClick = { toggleSaved(selected.title) }) {
                                     Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
                                 }
@@ -866,14 +868,14 @@ private fun AddisReelApp() {
                                     Icon(Icons.Default.Info, contentDescription = "Series information")
                                 }
                             }
-                            if (!cinemaMode) Column(Modifier.align(Alignment.BottomStart).padding(AddisSpacing.comfortable)) {
+
                                 Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=AddisCinema.accent, fontWeight=AddisTypeWeight.strong,fontSize = AddisTypeSize.caption)
-                                Text(selected.title,fontSize = AddisTypeSize.heading,fontWeight=AddisTypeWeight.strong)
+                                Text(selected.title,fontSize = AddisTypeSize.heading,fontWeight=AddisTypeWeight.strong,color=Color.White)
                                 Spacer(Modifier.height(8.dp))
                                 LinearProgressIndicator(progress = { episode.toFloat() / selected.episodes.toFloat() }, modifier = Modifier.fillMaxWidth().height(4.dp), color = AddisCinema.accent, trackColor = AddisColors.border)
                                 Text(selected.description, modifier = Modifier.clickable { showFullDescription = !showFullDescription }, maxLines = if (showFullDescription) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, color=Color.LightGray)
                                 Text(if (showFullDescription) "Show less" else "More about this story", modifier = Modifier.clickable { showFullDescription = !showFullDescription }, fontSize = AddisTypeSize.micro, color = AddisCinema.accent)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
                                     AddisTextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
                                     AddisTextButton(onClick = {
                                         autoNextEnabled = !autoNextEnabled
@@ -885,13 +887,12 @@ private fun AddisReelApp() {
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
-                                Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                     AddisOutlinedButton(onClick={selectEpisode(episode-1)},enabled=episode>1) { Icon(Icons.Default.SkipPrevious,contentDescription="Previous episode") }
                                     AddisButton(onClick={selectEpisode(episode+1)},enabled=episode<selected.episodes) { Icon(Icons.Default.SkipNext,null); Text("Next episode") }
 
                                 }
                             }
-                        }
                         if (!cinemaMode) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(AddisSpacing.small),horizontalArrangement=Arrangement.spacedBy(AddisSpacing.small)) {
                             catalog.forEach { drama -> AddisChoiceChip(selected=selected==drama,onClick={selectDrama(drama)},label={Text(drama.title)}) }
                         }
