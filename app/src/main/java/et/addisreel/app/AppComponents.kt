@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -107,8 +108,8 @@ internal fun AddisAppearancePicker() {
         verticalArrangement = Arrangement.spacedBy(AddisSpacing.small),
         modifier = Modifier.fillMaxWidth()
     ) {
-        AddisSectionTitle("Appearance")
-        Text("Use your device preference or choose a comfortable theme.",
+        AddisSectionTitle(stringResource(R.string.appearance))
+        Text(stringResource(R.string.appearance_description),
             style = MaterialTheme.typography.bodyMedium, color = AddisColors.textSecondary)
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -119,7 +120,13 @@ internal fun AddisAppearancePicker() {
                     selected = mode == choice.value,
                     onClick = { choice.change(mode) },
                     modifier = Modifier.heightIn(min = AddisSpacing.touch),
-                    label = { Text(mode, style = MaterialTheme.typography.labelLarge) }
+                    label = {
+                        Text(when (mode) {
+                            "System" -> stringResource(R.string.theme_system)
+                            "Light" -> stringResource(R.string.theme_light)
+                            else -> stringResource(R.string.theme_dark)
+                        }, style = MaterialTheme.typography.labelLarge)
+                    }
                 )
             }
         }
