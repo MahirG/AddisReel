@@ -86,6 +86,73 @@ internal fun AddisStatusMessage(
     }
 }
 
+@Composable
+internal fun AddisButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    Button(
+        onClick = onClick, enabled = enabled,
+        modifier = modifier.heightIn(min = AddisSpacing.touch),
+        shape = MaterialTheme.shapes.medium,
+        content = content
+    )
+}
+
+@Composable
+internal fun AddisOutlinedButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    OutlinedButton(
+        onClick = onClick, enabled = enabled,
+        modifier = modifier.heightIn(min = AddisSpacing.touch),
+        shape = MaterialTheme.shapes.medium,
+        content = content
+    )
+}
+
+@Composable
+internal fun AddisTextButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable RowScope.() -> Unit
+) {
+    TextButton(onClick = onClick, enabled = enabled,
+        modifier = modifier.heightIn(min = AddisSpacing.touch), content = content)
+}
+
+@Composable
+internal fun AddisIconAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    IconButton(onClick = onClick, enabled = enabled,
+        modifier = modifier.sizeIn(minWidth = AddisSpacing.touch, minHeight = AddisSpacing.touch),
+        content = content)
+}
+
+@Composable
+internal fun AddisFilledIconAction(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    FilledTonalIconButton(
+        onClick = onClick, enabled = enabled,
+        modifier = modifier.sizeIn(minWidth = AddisSpacing.touch, minHeight = AddisSpacing.touch),
+        content = content
+    )
+}
+
 /** One touch-target and radius policy for all selection chips. */
 @Composable
 internal fun AddisChoiceChip(
