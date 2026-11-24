@@ -85,6 +85,20 @@ internal fun AddisStatusMessage(
     }
 }
 
+/** One touch-target and radius policy for all selection chips. */
+@Composable
+internal fun AddisChoiceChip(
+    selected: Boolean, onClick: () -> Unit,
+    label: @Composable () -> Unit
+) {
+    FilterChip(
+        selected = selected, onClick = onClick,
+        modifier = Modifier.heightIn(min = AddisSpacing.touch),
+        shape = MaterialTheme.shapes.small,
+        label = label
+    )
+}
+
 /** Theme control is visible and reachable at all supported system font scales. */
 @Composable
 internal fun AddisAppearancePicker() {
