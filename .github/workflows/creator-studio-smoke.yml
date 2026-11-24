@@ -1,0 +1,43 @@
+name: Creator Studio Phase 1 live verification
+on:
+  push:
+    branches: ['feature/addisreel-v160-creator-studio']
+    paths:
+      - 'backend/creators.js'
+      - 'backend/creator-page.js'
+      - 'backend/creator-client.js'
+      - 'backend/worker.js'
+      - 'backend/studio.js'
+      - 'backend/tests/creators.test.mjs'
+      - '.github/workflows/creator-studio-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  creator-studio-live-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify creator onboarding and owner-only access tests
+        run: node --test backend/tests/creators.test.mjs
+      - name: Confirm live Studio endpoints are reachable and protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='https://addisreel-catalog.eddieaman475.workers.dev'
+          curl --retry 3 --retry-delay 2 -fsS "$ROOT/health/ready" |
+            python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["status"]=="ok" and "catalog-db" in x["checks"]'
+          curl --retry 3 --retry-delay 2 -fsS "$ROOT/admin/creators.js" -o "$RUNNER_TEMP/creator-client.js"
+          grep -q 'reviewHistory' "$RUNNER_TEMP/creator-client.js"
+          GET_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/v1/admin/creators")
+          test "$GET_STATUS" = 401 || { echo "::error::Anonymous private registry was not blocked: $GET_STATUS"; exit 1; }
+          PAGE_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/admin/creators")
+          test "$PAGE_STATUS" = 302 || { echo "::error::Owner-only page should redirect signed-out visitors: $PAGE_STATUS"; exit 1; }
+          BAD_ORIGIN=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Origin: https://invalid.example' -H 'Content-Type: application/json' -d '{"kind":"filmmaker"}' "$ROOT/v1/admin/creators")
+          test "$BAD_ORIGIN" = 403 || { echo "::error::Cross-origin request was not blocked: $BAD_ORIGIN"; exit 1; }
+          echo '### Live creator Studio available and protected' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Authenticated dashboard: https://addisreel-catalog.eddieaman475.workers.dev/admin/creators' >> "$GITHUB_STEP_SUMMARY"
