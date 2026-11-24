@@ -17,13 +17,25 @@ async function input(request){
 }
 // Preserve existing published, licensed titles as legacy rights-exempt until
 // an explicit future migration. Every new/non-grandfathered title is gated.
-export function rightsPredicate(alias="s") {
+// Date-expressions are restricted to our three fixed, trusted SQL shapes;
+ // clients can never supply a raw SQL fragment.
+export function rightsPredicateAt(alias="s", dateExpr="date('now')") {
   if(!/^[a-z]+$/.test(alias))throw Error("Invalid SQL alias");
+  if(!["date('now')","date(?)","date(p.premiere_at)"].includes(dateExpr))
+    throw Error("Invalid rights evaluation time");
   return "(EXISTS(SELECT 1 FROM grandfathered_rights legacy WHERE legacy.series_id="+alias+".id) OR "+
     "EXISTS(SELECT 1 FROM title_rights rights JOIN creator_profiles creator ON creator.id=rights.creator_id "+
     "WHERE rights.series_id="+alias+".id AND rights.status='approved' AND creator.status='verified' "+
     "AND rights.original_unreleased=1 AND rights.territory='worldwide' AND rights.evidence_key IS NOT NULL "+
-    "AND rights.start_date<=date('now') AND (rights.end_date IS NULL OR rights.end_date>=date('now'))))";
+    "AND rights.start_date<="+dateExpr+" AND (rights.end_date IS NULL OR rights.end_date>="+dateExpr+")))";
+}
+export function rightsPredicate(alias="s") {return rightsPredicateAt(alias);}
+// A future-premiere check does not authorize early public playback: public
+// queries continue to use rightsPredicate() (i.e. rights valid NOW).
+export async function hasRightsAt(env,seriesId,utcDateTime) {
+  const row=await env.DB.prepare("SELECT "+rightsPredicateAt("s","date(?)")+" AS allowed FROM series s WHERE s.id=?")
+    .bind(utcDateTime,utcDateTime,seriesId).first();
+  return row?.allowed===1 || row?.allowed===true;
 }
 export async function hasValidRights(env,seriesId){
   const row=await env.DB.prepare("SELECT "+rightsPredicate("s")+" AS allowed FROM series s WHERE s.id=?").bind(seriesId).first();
