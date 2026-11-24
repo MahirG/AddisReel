@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AddisReel</string>
+    <string name="nav_watch">Ilaali</string>
+    <string name="nav_home">Fuula jalqabaa</string>
+    <string name="nav_library">Kuusaa</string>
+    <string name="nav_premium">Piriimiyamii</string>
+    <string name="library_heading">Kuusaa koo</string>
+    <string name="premium_heading">AddisReel Piriimiyamii</string>
+    <string name="home_tagline">Miira guddaa. Kutaa gabaabaa.</string>
+    <string name="search_dramas">Diraamaa barbaadi</string>
+    <string name="appearance">Bifa</string>
+    <string name="appearance_description">Bifa meeshaa keetii fayyadami yookaan bifa siif mijatu filadhu.</string>
+    <string name="theme_system">Sirna</string>
+    <string name="theme_light">Ifaa</string>
+    <string name="theme_dark">Dukkana</string>
+    <string name="app_updates">Haaromsa appii</string>
+</resources>
