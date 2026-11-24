@@ -1531,7 +1531,7 @@ private fun AddisReelApp() {
                 if (player.isPlaying && duration > 0L && remaining in 1L..25_000L) {
                     // Do not spend bandwidth warming a link that may have expired.
                     if (PlaybackPolicy.freshPlaybackLink(android.os.SystemClock.elapsedRealtime(), nextEpisodeFetchedAtMs, 45_000L)) {
-                        NextEpisodePreloader.warmMp4OnUnmeteredNetwork(context, upcoming, StreamCache.get(context))
+                        NextEpisodePreloader.warmNextEpisodeOnUnmeteredNetwork(context, upcoming, StreamCache.get(context))
                     }
                     break
                 }
