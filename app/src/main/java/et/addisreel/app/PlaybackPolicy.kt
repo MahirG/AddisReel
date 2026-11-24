@@ -16,6 +16,11 @@ internal object PlaybackPolicy {
     fun canPrimeMp4(url: String): Boolean =
         acceptsPlaybackUrl(url) && url.substringBefore('?').endsWith(".mp4", ignoreCase = true)
 
+    /** Prefetch only an authenticated VOD master playlist, never arbitrary media paths. */
+    fun canWarmHlsManifest(url: String): Boolean =
+        acceptsPlaybackUrl(url) &&
+            url.substringBefore('?').endsWith("/master.m3u8", ignoreCase = true)
+
     fun freshPlaybackLink(nowMs: Long, fetchedAtMs: Long, maxAgeMs: Long): Boolean =
         fetchedAtMs >= 0L && nowMs >= fetchedAtMs &&
             nowMs - fetchedAtMs <= maxAgeMs
