@@ -1,1 +1,6 @@
-{"version":"1.3.0","versionCode":22,"confirm":"PUBLISH","branch":"feature/addisreel-v130-network-smart-player"}
+{
+  "version": "1.3.0",
+  "versionCode": 22,
+  "confirm": "PUBLISH",
+  "branch": "feature/addisreel-v130-network-smart-player"
+}
