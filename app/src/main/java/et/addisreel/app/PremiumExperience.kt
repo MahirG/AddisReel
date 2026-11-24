@@ -55,6 +55,7 @@ internal object PremiereClock {
         }.getOrNull()
     }
     fun remaining(target: Long, now: Long): String {
+        if(target<=now)return "00:00:00"
         val secs=max(0L,(target-now+999L)/1000L)
         val days=secs/86400L
         val hours=secs%86400L/3600L
