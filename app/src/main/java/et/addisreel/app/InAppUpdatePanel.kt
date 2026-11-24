@@ -27,15 +27,26 @@ fun InAppUpdatePanel() {
             context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode.toInt()
         else context.packageManager.getPackageInfo(context.packageName, 0).versionCode
     }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("App updates", style = MaterialTheme.typography.titleLarge)
-        Text("Installed version: $currentVersion • Build $currentCode")
-        Text(status, style = MaterialTheme.typography.bodyMedium)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)
+    ) {
+        AddisSectionTitle("App updates")
+        Text("Installed version: $currentVersion • Build $currentCode",
+            style = MaterialTheme.typography.bodySmall, color = AddisColors.textSecondary)
+        AddisStatusMessage(status, when {
+            status.contains("failed", ignoreCase = true) || status.contains("error", ignoreCase = true) ->
+                AddisStatus.Error
+            status.contains("available", ignoreCase = true) ||
+                status.contains("complete", ignoreCase = true) ->
+                AddisStatus.Success
+            else -> AddisStatus.Info
+        })
         if (busy && release != null) {
             LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
-            Text("$progress% downloaded")
+            Text("$progress% downloaded", style = MaterialTheme.typography.bodySmall, color = AddisColors.textSecondary)
         }
-        Button(enabled = !busy, onClick = {
+        Button(modifier = Modifier.heightIn(min = AddisSpacing.touch), enabled = !busy, onClick = {
             busy = true
             status = "Checking for updates…"
             Thread {
@@ -51,7 +62,7 @@ fun InAppUpdatePanel() {
             }.start()
         }) { Text("Check for updates") }
         if (release != null) {
-            Button(enabled = !busy, onClick = {
+            Button(modifier = Modifier.heightIn(min = AddisSpacing.touch), enabled = !busy, onClick = {
                 val existing = downloaded
                 if (existing != null && existing.exists()) {
                     try { AppUpdater.install(context, existing) }
@@ -74,7 +85,7 @@ fun InAppUpdatePanel() {
                     }.start()
                 }
             }) { Text(if (downloaded != null) "Install downloaded update" else "Download and install") }
-            Text("Android may ask you to allow installs from AddisReel. Updates must use the same signing certificate as your installed app.", style = MaterialTheme.typography.bodySmall)
+            Text("Android may ask you to allow installs from AddisReel. Updates must use the same signing certificate as your installed app.", style = MaterialTheme.typography.bodySmall, color = AddisColors.textSecondary)
         }
     }
 }
