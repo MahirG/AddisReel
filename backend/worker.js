@@ -131,7 +131,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:5,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag"]});
       // Liveness alone cannot prove the D1 job migration was applied.
       // Readiness is deliberately sanitized: no media keys, owner data or secrets.
       if (request.method === "GET" && path === "/health/ready") {
@@ -142,7 +142,7 @@ export default {
         } catch {
           return reply({status:"degraded",service:"addisreel-catalog"},503);
         }
-        return reply({status:"ok",service:"addisreel-catalog",phase:5,checks:["catalog-db","processing-jobs","media-binding"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding"]});
       }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
