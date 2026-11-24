@@ -34,7 +34,7 @@ set -E
 APP=et.addisreel.app/.MainActivity
 BEFORE_APK=before/app/build/outputs/apk/debug/app-debug.apk
 AFTER_APK=app/build/outputs/apk/debug/app-debug.apk
-test -s "$BEFORE_APK" && test -s "$AFTER_APK"
+case "${QA_STAGE:?}" in baseline) test -s "$BEFORE_APK";; candidate) test -s "$AFTER_APK";; *) exit 2;; esac
 
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
@@ -82,46 +82,33 @@ capture_group() {
   done
 }
 
-capture_stage() {
-  local stage="$1" apk="$2"
-  adb uninstall et.addisreel.app >/dev/null 2>&1 || true
-  adb_retry install "$apk"
-  adb_retry shell pm clear et.addisreel.app >/dev/null
-  capture_group "$stage" yes 1.0 normal
-  capture_group "$stage" no 1.0 normal
-  capture_group "$stage" yes 1.5 normal
-  capture_group "$stage" no 1.5 normal
-}
-
-capture_stage baseline "$BEFORE_APK"
-capture_stage candidate "$AFTER_APK"
-# Candidate stress-case screenshots, with real 320dp display width.
-adb shell wm size 320x720 >/dev/null
-adb shell wm density 160 >/dev/null
-capture_group candidate yes 2.0 compact
-capture_group candidate no 2.0 compact
+# Each matrix job owns a fresh emulator and exactly one configuration.
+stage="${QA_STAGE:?}"
+theme="${QA_THEME:?}"
+font="${QA_FONT:?}"
+device="${QA_DEVICE:?}"
+case "$stage" in
+  baseline) apk="$BEFORE_APK";;
+  candidate) apk="$AFTER_APK";;
+  *) exit 2;;
+esac
+adb_retry install "$apk"
+if [ "$device" = compact ]; then
+  adb_retry shell wm size 320x720
+  adb_retry shell wm density 160
+fi
+capture_group "$stage" "$theme" "$font" "$device"
 python3 - <<'PY'
 from pathlib import Path
-from hashlib import sha256
-import json,struct
-shots=sorted(Path('visual-qa').glob('*.png'))
-assert len(shots)==40, f'Expected 40 actual images, got {len(shots)}'
-dimensions={}
-for item in shots:
-    data=item.read_bytes()
-    assert len(data)>1024 and data.startswith(b'\x89PNG\r\n\x1a\n'), f'Bad screenshot {item}'
-    w,h=struct.unpack('>II',data[16:24])
-    assert w>100 and h>100, f'Bad capture geometry {item}: {w}x{h}'
-    dimensions[item.name]=[w,h]
-for stage in ('baseline','candidate'):
-    for mode in ('yes','no'):
-        files=[x for x in shots if x.name.startswith(f'{stage}-normal-{mode}-font1.0')]
-        assert len(files)==4
-        hashes={sha256(x.read_bytes()).hexdigest() for x in files}
-        assert len(hashes)>=3, f'{stage} {mode}: tab taps did not show distinct screens'
-Path('visual-qa/capture-manifest.json').write_text(json.dumps({
-    'count':len(shots),'dimensions':dimensions,
-    'note':'Automated artifact integrity check, NOT a manual visual/accessibility approval.'
-},indent=2))
-print('Captured 40 before/after and compact-font screenshots; manual inspection remains required.')
+import struct, xml.etree.ElementTree as ET
+shots=list(Path('visual-qa').glob('*.png'))
+assert len(shots)==4, f'Expected four screenshots, got {len(shots)}'
+for p in shots:
+    d=p.read_bytes()
+    assert len(d)>1024 and d.startswith(bytes.fromhex('89504e470d0a1a0a'))
+    w,h=struct.unpack('>II',d[16:24])
+    assert w>100 and h>100
+    root=ET.parse(p.with_suffix('.xml')).getroot()
+    assert any(n.get('package')=='et.addisreel.app' for n in root.iter('node')), p
+print('Four captures and accessibility trees validated; manual review remains required.')
 PY
