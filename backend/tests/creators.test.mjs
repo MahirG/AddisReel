@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { webcrypto } from "node:crypto";
 import worker from "../worker.js";
 import { validateCreator, validateReview, handleCreatorAdmin } from "../creators.js";
+import { creatorHtml } from "../creator-page.js";
+import { creatorClient } from "../creator-client.js";
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const root="https://addisreel-catalog.example.test";
 const sample={
@@ -104,4 +106,16 @@ test("creator records and dashboard remain private without an owner session",asy
  assert.equal(dashboard.headers.get("location"),root+"/admin");
  const change=await worker.fetch(new Request(root+"/v1/admin/creators",{method:"POST",headers:{Origin:"https://evil.example.test","Content-Type":"application/json"},body:JSON.stringify(sample)}),env);
  assert.equal(change.status,403);
+});
+
+test("creator dashboard and browser script are valid and expose accessible review controls",async()=>{
+ assert.doesNotThrow(()=>new Function(creatorClient));
+ for(const id of ['createForm','reviewForm','creatorList','reviewHistory','identityConfirmed','authorityConfirmed'])
+   assert.ok(creatorHtml.includes('id="'+id+'"'),id);
+ assert.match(creatorHtml,/aria-live="polite"/);
+ assert.match(creatorHtml,/This does not grant publishing rights/);
+ const script=await worker.fetch(req("/admin/creators.js"),{});
+ assert.equal(script.status,200);
+ assert.match(script.headers.get("content-type"),/javascript/);
+ assert.match(await script.text(),/reviewHistory/);
 });
