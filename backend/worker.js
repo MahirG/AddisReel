@@ -56,6 +56,21 @@ async function publicSeries(env) {
   ).all();
   return rows.results;
 }
+// Public catalog metadata can be conditionally reused for fast startup. Playback
+// and poster access still check live license/publication rules on every request.
+async function publicCatalogResponse(request, env) {
+  const body = JSON.stringify({series:await publicSeries(env)});
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body)));
+  const etag = '"' + Array.from(digest, b => b.toString(16).padStart(2,"0")).join("") + '"';
+  const headers = {
+    ...publicHeaders, "Content-Type":JSON_TYPE,
+    "Cache-Control":"public, max-age=30, must-revalidate",
+    "ETag":etag, "Vary":"Accept-Encoding"
+  };
+  if (request.headers.get("If-None-Match") === etag)
+    return new Response(null,{status:304,headers});
+  return new Response(body,{status:200,headers});
+}
 async function playableEpisode(env, id, n) {
   return env.DB.prepare(
     "SELECT e.series_id,e.number,e.title,e.media_prefix,e.duration_seconds FROM episodes e " +
@@ -116,7 +131,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:5,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag"]});
       // Liveness alone cannot prove the D1 job migration was applied.
       // Readiness is deliberately sanitized: no media keys, owner data or secrets.
       if (request.method === "GET" && path === "/health/ready") {
@@ -127,7 +142,7 @@ export default {
         } catch {
           return reply({status:"degraded",service:"addisreel-catalog"},503);
         }
-        return reply({status:"ok",service:"addisreel-catalog",phase:5,checks:["catalog-db","processing-jobs","media-binding"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding"]});
       }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
@@ -169,7 +184,7 @@ export default {
       if (request.method === "OPTIONS" && path.startsWith("/v1/") && !path.startsWith("/v1/admin/"))
         return new Response(null,{status:204,headers:{...publicHeaders,"Access-Control-Allow-Methods":"GET, OPTIONS"}});
       if (request.method === "GET" && path === "/v1/catalog")
-        return reply({series:await publicSeries(env)});
+        return publicCatalogResponse(request,env);
       const episodesMatch = /^\/v1\/series\/([a-z0-9-]+)\/episodes$/.exec(path);
       if (request.method === "GET" && episodesMatch) {
         const id = episodesMatch[1];

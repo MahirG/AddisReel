@@ -9,6 +9,8 @@ import android.net.NetworkCapabilities
 import java.net.HttpURLConnection
 import java.net.URL
 import org.json.JSONObject
+import org.json.JSONArray
+import android.content.SharedPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.awaitCancellation
@@ -132,24 +134,95 @@ private fun catalogResponse(path: String): JSONObject {
         connection.disconnect()
     }
 }
-private fun fetchPublishedCatalog(): List<Drama> {
-    val result = catalogResponse("/v1/catalog").getJSONArray("series")
+private const val CATALOG_CACHE_KEY = "published_catalog_v1"
+private const val CATALOG_CACHE_AT_KEY = "published_catalog_at_v1"
+private const val CATALOG_CACHE_ETAG_KEY = "published_catalog_etag_v1"
+private data class CatalogResult(val titles: List<Drama>?, val etag: String?, val unchanged: Boolean)
+
+private fun parsePublicTitles(array: JSONArray): List<Drama> {
+    val seen = HashSet<String>()
     return buildList {
-        for (i in 0 until result.length()) {
-            val item = result.getJSONObject(i)
-            val id = item.getString("id")
-            val episodeCount = item.optInt("episodes", 0)
-            if (episodeCount > 0 && id.matches(Regex("[a-z0-9][a-z0-9-]{0,63}"))) {
-                add(Drama(
-                    title = item.getString("title"),
-                    genre = item.getString("genre"),
-                    episodes = episodeCount,
-                    description = item.optString("description", ""),
-                    id = id,
-                    posterUrl = CATALOG_API + "/v1/posters/" + id
-                ))
-            }
+        for (i in 0 until minOf(array.length(), CatalogCachePolicy.MAX_SERIES)) {
+            val item = array.optJSONObject(i) ?: continue
+            val id = item.optString("id", "")
+            val title = item.optString("title", "")
+            val genre = item.optString("genre", "")
+            val description = item.optString("description", "")
+            val count = item.optInt("episodes", 0)
+            if (!CatalogCachePolicy.validPublicSeries(id, title, genre, description, count) ||
+                !seen.add(id)) continue
+            add(Drama(
+                title = title, genre = genre, episodes = count, description = description,
+                id = id, posterUrl = CATALOG_API + "/v1/posters/" + id
+            ))
         }
+    }
+}
+
+private fun cachedPublicTitles(prefs: SharedPreferences): List<Drama> {
+    val encoded = prefs.getString(CATALOG_CACHE_KEY, null)
+    if (!CatalogCachePolicy.isFresh(
+            System.currentTimeMillis(), prefs.getLong(CATALOG_CACHE_AT_KEY, 0L), encoded
+        )) return emptyList()
+    return runCatching { parsePublicTitles(JSONArray(encoded!!)) }.getOrDefault(emptyList())
+}
+
+private fun rememberPublicTitles(prefs: SharedPreferences, titles: List<Drama>, etag: String?) {
+    val array = JSONArray()
+    for (item in titles.take(CatalogCachePolicy.MAX_SERIES)) {
+        array.put(JSONObject()
+            .put("id", item.id).put("title", item.title)
+            .put("genre", item.genre).put("description", item.description)
+            .put("episodes", item.episodes))
+    }
+    val raw = array.toString()
+    if (raw.length > CatalogCachePolicy.MAX_PAYLOAD_CHARS) return
+    prefs.edit()
+        .putString(CATALOG_CACHE_KEY, raw)
+        .putLong(CATALOG_CACHE_AT_KEY, System.currentTimeMillis())
+        .putString(CATALOG_CACHE_ETAG_KEY, etag.takeIf { CatalogCachePolicy.validEtag(it) })
+        .apply()
+}
+
+private fun clearCachedPublicTitles(prefs: SharedPreferences) {
+    prefs.edit()
+        .remove(CATALOG_CACHE_KEY).remove(CATALOG_CACHE_AT_KEY)
+        .remove(CATALOG_CACHE_ETAG_KEY).apply()
+}
+
+/** A 304 never contains a body; use it only when a validated local snapshot exists. */
+private fun fetchPublishedCatalog(knownEtag: String?): CatalogResult {
+    val connection = (URL(CATALOG_API + "/v1/catalog").openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 6000
+        readTimeout = 6000
+        setRequestProperty("Accept", "application/json")
+        if (CatalogCachePolicy.validEtag(knownEtag))
+            setRequestProperty("If-None-Match", knownEtag)
+    }
+    try {
+        val code = connection.responseCode
+        if (code == HttpURLConnection.HTTP_NOT_MODIFIED)
+            return CatalogResult(null, knownEtag, unchanged = true)
+        if (code != HttpURLConnection.HTTP_OK)
+            throw IllegalStateException("Catalog HTTP " + code)
+        val text = connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+            val buffer = CharArray(8192)
+            val payload = StringBuilder()
+            while (true) {
+                val n = reader.read(buffer)
+                if (n < 0) break
+                if (payload.length + n > CatalogCachePolicy.MAX_PAYLOAD_CHARS)
+                    throw IllegalStateException("Catalog exceeds safe cache size")
+                payload.append(buffer, 0, n)
+            }
+            payload.toString()
+        }
+        val titles = parsePublicTitles(JSONObject(text).getJSONArray("series"))
+        val newEtag = connection.getHeaderField("ETag")
+        return CatalogResult(titles, newEtag.takeIf { CatalogCachePolicy.validEtag(it) }, unchanged = false)
+    } finally {
+        connection.disconnect()
     }
 }
 private fun fetchEpisodeStream(id: String, episode: Int): String? {
@@ -170,7 +243,12 @@ private fun AddisReelApp() {
     val context = LocalContext.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_library", android.content.Context.MODE_PRIVATE) }
     val playbackPreferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
-    var catalog by remember { mutableStateOf(previewCatalog) }
+    // Display only validated, public licensed metadata from a bounded device snapshot.
+    // Playback still checks the server for the current publication/license state.
+    val cachedTitles = remember(preferences) { cachedPublicTitles(preferences) }
+    var catalog by remember { mutableStateOf(cachedTitles.ifEmpty { previewCatalog }) }
+    var catalogStatus by remember { mutableStateOf(if (cachedTitles.isNotEmpty()) "cached" else "loading") }
+    var catalogRefreshRequest by remember { mutableIntStateOf(0) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
     var nextEpisodeUrl by remember { mutableStateOf<String?>(null) }
@@ -245,14 +323,41 @@ private fun AddisReelApp() {
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
-    LaunchedEffect(Unit) {
-        val remote = runCatching { withContext(Dispatchers.IO) { fetchPublishedCatalog() } }.getOrNull()
-        if (!remote.isNullOrEmpty()) {
-            catalog = remote
-            remoteCatalogAvailable = true
-            val restored = remote.find { it.title == recentlyWatched } ?: remote.first()
-            selected = restored
-            episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
+    LaunchedEffect(catalogRefreshRequest) {
+        // Re-read cache on each retry so a 304 never uses an expired snapshot.
+        val localTitles = withContext(Dispatchers.IO) { cachedPublicTitles(preferences) }
+        val knownEtag = if (localTitles.isNotEmpty())
+            preferences.getString(CATALOG_CACHE_ETAG_KEY, null)?.takeIf { CatalogCachePolicy.validEtag(it) }
+        else null
+        val response = runCatching {
+            withContext(Dispatchers.IO) { fetchPublishedCatalog(knownEtag) }
+        }.getOrNull()
+        if (response == null) {
+            catalogStatus = if (localTitles.isNotEmpty()) "offline" else "unavailable"
+        } else {
+            val published = if (response.unchanged) localTitles else response.titles.orEmpty()
+            if (published.isNotEmpty()) {
+                catalog = published
+                remoteCatalogAvailable = true
+                catalogStatus = "live"
+                val restored = published.find { it.id == selected.id && it.id.isNotBlank() }
+                    ?: published.find { it.title == recentlyWatched }
+                    ?: published.first()
+                selected = restored
+                episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
+                withContext(Dispatchers.IO) {
+                    rememberPublicTitles(preferences, published, response.etag)
+                }
+            } else {
+                // A successful empty response revokes the old catalog snapshot.
+                // Never preserve offline entries when the server has withdrawn them.
+                catalog = previewCatalog
+                remoteCatalogAvailable = false
+                catalogStatus = "empty"
+                selected = previewCatalog.first()
+                episode = 1
+                withContext(Dispatchers.IO) { clearCachedPublicTitles(preferences) }
+            }
         }
     }
     // Warm only the first few visible posters, and only on unmetered connectivity.
@@ -764,7 +869,27 @@ private fun AddisReelApp() {
                                 Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
                             }
                         }
-                        if (!remoteCatalogAvailable) Text("Explore upcoming stories · Episodes will appear when available", modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold)
+                        if (!remoteCatalogAvailable) Row(
+                            Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=2.dp),
+                            verticalAlignment=Alignment.CenterVertically
+                        ) {
+                            Text(
+                                when (catalogStatus) {
+                                    "cached" -> "Saved titles · checking for new episodes…"
+                                    "offline" -> "Offline · reconnect to stream saved titles"
+                                    "empty" -> "No published episodes yet · previews only"
+                                    "unavailable" -> "Unable to load stories · check internet"
+                                    else -> "Loading published episodes…"
+                                }, modifier=Modifier.weight(1f), fontSize=11.sp, color=Gold
+                            )
+                            if (catalogStatus != "cached" && catalogStatus != "loading") {
+                                TextButton(onClick={ catalogStatus = "loading"; catalogRefreshRequest++ }) {
+                                    Icon(Icons.Default.Refresh, contentDescription=null, modifier=Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Retry", fontSize=12.sp)
+                                }
+                            }
+                        }
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (!discoverOnlySaved || drama.title in saved) &&

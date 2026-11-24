@@ -56,6 +56,28 @@ jobs:
           test "$STATUS" = 401 || { echo "::error::Retry must reject anonymous requests; got $STATUS"; exit 1; }
           echo "### Phase 5 backend verified" >> "$GITHUB_STEP_SUMMARY"
 
+  live-phase6-smoke:
+    if: github.ref == 'refs/heads/feature/addisreel-v120-fast-start'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify conditional public catalog and real D1 readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=https://addisreel-catalog.eddieaman475.workers.dev
+          curl -fsS "$ROOT/health" | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=6 and "catalog-etag" in x["features"]'
+          curl -fsS "$ROOT/health/ready" | python3 -c 'import sys,json;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=6 and "processing-jobs" in x["checks"]'
+          curl -fsS -D "$RUNNER_TEMP/catalog-headers" "$ROOT/v1/catalog" -o "$RUNNER_TEMP/catalog.json"
+          python3 -c 'import sys,json;assert isinstance(json.load(open(sys.argv[1]))["series"],list)' "$RUNNER_TEMP/catalog.json"
+          ETAG=$(grep -i '^etag:' "$RUNNER_TEMP/catalog-headers" | cut -d' ' -f2- | tr -d '\r')
+          test -n "$ETAG" || { echo "::error::Catalog ETag missing"; exit 1; }
+          grep -qi 'must-revalidate' "$RUNNER_TEMP/catalog-headers"
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$ROOT/v1/catalog")
+          test "$STATUS" = 304 || { echo "::error::Expected 304, got $STATUS"; exit 1; }
+          echo "### Phase 6 catalog, caching and D1 readiness verified" >> "$GITHUB_STEP_SUMMARY"
+
   catalog-api-check:
     runs-on: ubuntu-latest
     permissions:

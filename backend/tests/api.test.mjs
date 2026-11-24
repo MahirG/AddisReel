@@ -51,6 +51,39 @@ test("public catalog is empty until licensed content has been published", async 
   assert.equal(res.headers.get("access-control-allow-origin"), "*");
 });
 
+test("public catalog validates ETag and returns a body-free 304 when unchanged", async () => {
+  const one = await worker.fetch(request("/v1/catalog"),{DB:emptyDB});
+  const etag=one.headers.get("etag");
+  assert.equal(one.status,200);
+  assert.match(etag,/^"[a-f0-9]{64}"$/);
+  assert.match(one.headers.get("cache-control"),/must-revalidate/);
+  assert.equal(one.headers.get("access-control-allow-origin"),"*");
+  const same = await worker.fetch(request("/v1/catalog",{
+    headers:{"If-None-Match":etag}
+  }),{DB:emptyDB});
+  assert.equal(same.status,304);
+  assert.equal(same.headers.get("etag"),etag);
+  assert.equal(same.headers.get("access-control-allow-origin"),"*");
+  assert.equal(await same.text(),"");
+});
+
+test("catalog revisions invalidate cached metadata, without caching admin responses",async()=>{
+  function catalogEnv(title){
+    return {DB:{prepare(){return {async all(){return {results:[{
+      id:"one",title,genre:"Drama",description:"Test",episodes:1,sort_order:0
+    }]}}}}}};
+  }
+  const old=await worker.fetch(request("/v1/catalog"),catalogEnv("Before"));
+  const changed=await worker.fetch(request("/v1/catalog",{
+    headers:{"If-None-Match":old.headers.get("etag")}
+  }),catalogEnv("After"));
+  assert.equal(changed.status,200);
+  assert.notEqual(changed.headers.get("etag"),old.headers.get("etag"));
+  assert.equal((await changed.json()).series[0].title,"After");
+  const admin=await worker.fetch(request("/v1/admin/series"),{DB:emptyDB});
+  assert.equal(admin.headers.get("cache-control"),"no-store");
+});
+
 test("administrative mutations require a logged-in owner session", async () => {
   const res = await worker.fetch(request("/v1/admin/series", {
     method: "POST", headers: { "Content-Type": "application/json", Origin: root },
