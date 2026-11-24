@@ -221,7 +221,9 @@ class CreatorStudioActivity : ComponentActivity() {
                 ): Boolean {
                     pendingPicker?.onReceiveValue(null)
                     pendingPicker = callback
-                    val accepted = params?.acceptTypes?.flatMap { it.split(",") }\n                        ?.map { it.trim() }?.filter { it.contains("/") && it.isNotBlank() }\n                        ?.toTypedArray() ?: emptyArray()
+                    val accepted = params?.acceptTypes?.flatMap { it.split(",") }
+                        ?.map { it.trim() }?.filter { it.contains("/") && it.isNotBlank() }
+                        ?.toTypedArray() ?: emptyArray()
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = if (accepted.size == 1) accepted[0] else "*/*"
