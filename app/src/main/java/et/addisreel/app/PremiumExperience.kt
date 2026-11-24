@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -112,7 +113,7 @@ internal fun PremiumExperience(onExplore:()->Unit){
         verticalArrangement=Arrangement.spacedBy(AddisSpacing.comfortable)
     ){
         PremiumHero(onExplore=onExplore,onUpdates={section=2})
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)){
             listOf(
                 R.string.premium_section_premieres,
                 R.string.premium_section_studio,
@@ -121,9 +122,9 @@ internal fun PremiumExperience(onExplore:()->Unit){
                 FilterChip(
                     selected=section==index,
                     onClick={section=index},
-                    label={Text(stringResource(textId),maxLines=1,overflow=TextOverflow.Ellipsis,
-                        style=MaterialTheme.typography.labelSmall)},
-                    modifier=Modifier.weight(1f),
+                    label={Text(stringResource(textId),maxLines=2,
+                        style=MaterialTheme.typography.labelMedium)},
+                    modifier=Modifier.heightIn(min=48.dp),
                     leadingIcon=if(section==index){{Icon(Icons.Default.CheckCircle,null,Modifier.size(16.dp))}}else null
                 )
             }
