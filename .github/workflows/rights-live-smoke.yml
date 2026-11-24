@@ -1,0 +1,49 @@
+name: Creator Studio Phase 2 live rights verification
+on:
+  push:
+    branches: ['feature/addisreel-creator-studio-phase2-rights']
+    paths:
+      - 'backend/rights.js'
+      - 'backend/rights-page.js'
+      - 'backend/rights-client.js'
+      - 'backend/worker.js'
+      - 'backend/tests/rights.test.mjs'
+      - '.github/workflows/rights-live-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  rights-live-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run the full existing Worker and exclusive rights test suite
+        run: node --test backend/tests/*.test.mjs
+      - name: Verify new Cloudflare rights API, private dashboard and legacy playback
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='https://addisreel-catalog.eddieaman475.workers.dev'
+          curl --retry 3 --retry-delay 2 -fsS "$ROOT/health/ready" |
+            python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["status"]=="ok" and "exclusive-rights-registry" in x["checks"] and "catalog-db" in x["checks"]'
+          curl --retry 3 --retry-delay 2 -fsS "$ROOT/admin/rights.js" -o "$RUNNER_TEMP/addisreel-rights-client.js"
+          grep -q 'reviewDecision' "$RUNNER_TEMP/addisreel-rights-client.js"
+          grep -q 'contractPdf' "$RUNNER_TEMP/addisreel-rights-client.js"
+          ANON=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/v1/admin/rights")
+          test "$ANON" = 401 || { echo "::error::Anonymous rights registry returned $ANON"; exit 1; }
+          PAGE=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/admin/rights")
+          test "$PAGE" = 302 || { echo "::error::Unsigned dashboard returned $PAGE"; exit 1; }
+          FORGED=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Origin: https://invalid.example' -H 'Content-Type: application/json' -d '{"seriesId":"unknown"}' "$ROOT/v1/admin/rights")
+          test "$FORGED" = 403 || { echo "::error::Cross-origin POST returned $FORGED"; exit 1; }
+          curl --retry 3 --retry-delay 2 -fsS -D "$RUNNER_TEMP/catalog-headers" "$ROOT/v1/catalog" -o "$RUNNER_TEMP/catalog.json"
+          python3 -c 'import json,sys;x=json.load(open(sys.argv[1])); assert isinstance(x["series"],list);assert len(x["series"])>=1;assert all("creator_id" not in s and "agreement_ref" not in s for s in x["series"])' "$RUNNER_TEMP/catalog.json"
+          ETAG=$(grep -i '^etag:' "$RUNNER_TEMP/catalog-headers" | cut -d' ' -f2- | tr -d '\r')
+          test -n "$ETAG" || { echo "::error::Catalog ETag missing"; exit 1; }
+          NOT_MODIFIED=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$ROOT/v1/catalog")
+          test "$NOT_MODIFIED" = 304 || { echo "::error::Catalog 304 expected, got $NOT_MODIFIED"; exit 1; }
+          echo "### Exclusive rights live deployment verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "Owner dashboard: https://addisreel-catalog.eddieaman475.workers.dev/admin/rights" >> "$GITHUB_STEP_SUMMARY"
