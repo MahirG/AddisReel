@@ -71,6 +71,21 @@ internal object PlaybackPolicy {
         return 1
     }
 
+    /**
+     * Do not restore to a point past the duration of a re-encoded film or into
+     * its final few frames. Rewinding the last 5 seconds lets completion events
+     * fire normally after an interrupted nearly-finished episode.
+     */
+    fun safeResumePositionMs(savedMs: Long, durationMs: Long): Long {
+        if (savedMs <= 0L) return 0L
+        if (durationMs <= 0L) return savedMs
+        return savedMs.coerceAtMost((durationMs - 5_000L).coerceAtLeast(0L))
+    }
+
+    /** Watching requires actual playback, not just tapping a series or episode. */
+    fun shouldRecordWatch(isPlaying: Boolean, positionMs: Long): Boolean =
+        isPlaying && positionMs >= 3_000L
+
     fun canRefreshRejectedLink(httpCode: Int?, attempts: Int): Boolean =
         (httpCode == 401 || httpCode == 403) && attempts < 1
 }
