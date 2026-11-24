@@ -22,6 +22,24 @@ class PlaybackPolicyTest {
         assertFalse(PlaybackPolicy.canPrimeMp4("http://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/1/source.mp4"))
     }
 
+    @Test fun hlsPrefetchOnlyAcceptsTrustedMasterPlaylists() {
+        assertTrue(PlaybackPolicy.canWarmHlsManifest(
+            "https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/master.m3u8"
+        ))
+        assertTrue(PlaybackPolicy.canWarmHlsManifest(
+            "https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/master.m3u8?auth=short"
+        ))
+        assertFalse(PlaybackPolicy.canWarmHlsManifest(
+            "https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/v480/index.m3u8"
+        ))
+        assertFalse(PlaybackPolicy.canWarmHlsManifest(
+            "https://other.example/v1/media/show/2/master.m3u8"
+        ))
+        assertFalse(PlaybackPolicy.canWarmHlsManifest(
+            "https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/source.mp4"
+        ))
+    }
+
     @Test fun supportsHttpsMp4AndHlsQueryLinks() {
         assertTrue(PlaybackPolicy.acceptsPlaybackUrl("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/1/source.mp4?auth=abc"))
         assertTrue(PlaybackPolicy.acceptsPlaybackUrl("https://addisreel-catalog.eddieaman475.workers.dev/v1/media/show/2/master.m3u8?auth=abc"))
