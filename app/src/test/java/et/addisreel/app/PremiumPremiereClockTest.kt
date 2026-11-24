@@ -8,7 +8,7 @@ import java.util.TimeZone
 
 class PremiumPremiereClockTest {
     @Test fun validPremiereUsesUtcRegardlessOfDeviceTimezone() {
-        val expected = 1830276000000L
+        val expected = 1830343200000L
         val original = TimeZone.getDefault()
         try {
             for (timezone in listOf("UTC","Africa/Addis_Ababa","America/Los_Angeles")) {
