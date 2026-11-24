@@ -174,7 +174,9 @@ class CreatorStudioActivity : ComponentActivity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.allowFileAccess = false
-            settings.allowContentAccess = false
+            // Required for explicitly user-selected Android Storage Access Framework upload URIs.
+            // File paths, mixed content and arbitrary external origins remain blocked.
+            settings.allowContentAccess = true
             settings.javaScriptCanOpenWindowsAutomatically = false
             settings.setSupportMultipleWindows(false)
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -274,10 +276,11 @@ class CreatorStudioActivity : ComponentActivity() {
             require(conn.responseCode == 200)
             require(conn.contentType?.startsWith("application/pdf") == true)
             require(conn.contentLengthLong < 0 || conn.contentLengthLong <= 5L * 1024 * 1024)
-            file = File.createTempFile("addisreel-contract-", ".pdf", cacheDir)
+            val destination = File.createTempFile("addisreel-contract-", ".pdf", cacheDir)
+            file = destination
             var count = 0L
             conn.inputStream.use { input ->
-                file.outputStream().use { output ->
+                destination.outputStream().use { output ->
                     val buffer = ByteArray(16384)
                     while (true) {
                         val n = input.read(buffer)
@@ -288,11 +291,11 @@ class CreatorStudioActivity : ComponentActivity() {
                     }
                 }
             }
-            val magic = file.inputStream().use { input ->
+            val magic = destination.inputStream().use { input ->
                 ByteArray(5).also { input.read(it) }
             }
             require(magic.contentEquals("%PDF-".toByteArray(Charsets.US_ASCII)))
-            return file
+            return destination
         } catch (error: Exception) {
             file?.delete()
             throw error
