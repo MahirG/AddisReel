@@ -10,6 +10,7 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_paths"/>
         </provider>
+        <activity android:name=".CreatorStudioActivity" android:exported="false" android:theme="@style/Theme.AddisReel" android:screenOrientation="unspecified" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
