@@ -8,6 +8,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.io.File
 
@@ -31,7 +32,7 @@ fun InAppUpdatePanel() {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)
     ) {
-        AddisSectionTitle("App updates")
+        AddisSectionTitle(stringResource(R.string.app_updates))
         Text("Installed version: $currentVersion • Build $currentCode",
             style = MaterialTheme.typography.bodySmall, color = AddisColors.textSecondary)
         AddisStatusMessage(status, when {
