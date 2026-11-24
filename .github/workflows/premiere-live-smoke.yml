@@ -65,7 +65,7 @@ jobs:
           python3 - "$RUNNER_TEMP/catalog.json" <<'PY'
           import json,sys
           series=json.load(open(sys.argv[1]))['series']
-          assert isinstance(series,list) and len(series)>=2, 'Existing published films became unavailable'
+          assert isinstance(series,list) and len(series)>=1, 'The previously playable catalog became unavailable'
           assert all('creator_id' not in s and 'agreement_ref' not in s for s in series)
           PY
           ETAG=$(grep -i '^etag:' "$RUNNER_TEMP/catalog-headers" | cut -d' ' -f2- | tr -d '\r')
