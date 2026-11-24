@@ -8,9 +8,16 @@
 - Job creation now uses an atomic D1 `INSERT … WHERE NOT EXISTS … RETURNING` to avoid duplicated active processing jobs.
 - `/health` advertises phase 5 and `processor-job-recovery`. Production release workflow requires a healthy live Phase 5 backend, signature checks, and a versioned `.release/1.1.0-publish.json` approval marker.
 
+## Production migration verification (2026-11-24)
+- Applied existing idempotent `backend/migrations/001_video_processing_jobs.sql` to the **addisreel-catalog** D1 database. Production was missing this table despite successful Worker deployment.
+- Preserved the pre-existing `video_jobs`, `processor_access`, catalog and owner tables; no existing records were modified or deleted.
+- Verified the queue SELECT with status/stalled projection runs and returns 0 current processing jobs.
+- Added `GET /health/ready` to validate the actual processing table and media/DB bindings. Returns HTTP 503 with a sanitized degraded result if a required dependency is absent.
+- The CI and production publication workflow now require this readiness check, not just static Worker liveness.
+
 ## Release and acceptance gates
 1. GitHub Actions backend Node suite, Android unit tests, debug assembly, production-signed release and explicit live backend smoke checks pass.
-2. Production `addisreel-catalog` Worker contains phase 5 plus retry API and is deployed to 100%. Unauthenticated POST to the retry endpoint must return HTTP 401.
+2. Production `addisreel-catalog` Worker contains phase 5 plus retry API and is deployed to 100%. `/health/ready` must confirm D1 processing table and media bindings; unauthenticated POST to retry with the correct Origin header must return HTTP 401.
 3. Version 1.1.0 (versionCode 20) must use the previous package ID `et.addisreel.app` and the unchanged signing identity for in-place installation.
 4. Release APK is published as immutable `releases/1.1.0/AddisReel.apk` in Cloudflare R2. `releases/latest.json` is updated only after the APK upload succeeds.
 5. A physical Android phone should confirm installation, resume, bookmarking, recommendations, and Wi-Fi/metered playback transitions. CI cannot certify device behavior.
