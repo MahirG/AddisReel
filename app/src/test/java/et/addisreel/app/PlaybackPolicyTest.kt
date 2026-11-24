@@ -63,6 +63,24 @@ class PlaybackPolicyTest {
         assertEquals(0, PlaybackPolicy.completedPercent(3, 0))
     }
 
+    @Test fun safeResumeRewindsNearEndAndRejectsInvalidSavedPositions() {
+        assertEquals(65_000L, PlaybackPolicy.safeResumePositionMs(65_000L, 120_000L))
+        assertEquals(115_000L, PlaybackPolicy.safeResumePositionMs(119_500L, 120_000L))
+        assertEquals(115_000L, PlaybackPolicy.safeResumePositionMs(500_000L, 120_000L))
+        assertEquals(0L, PlaybackPolicy.safeResumePositionMs(-500L, 120_000L))
+        assertEquals(0L, PlaybackPolicy.safeResumePositionMs(5_000L, 4_000L))
+        assertEquals(15_000L, PlaybackPolicy.safeResumePositionMs(15_000L, -1L))
+        assertEquals(0L, PlaybackPolicy.safeResumePositionMs(0L, 0L))
+    }
+
+    @Test fun historyRequiresRealPlaybackPastMinimumThreshold() {
+        assertFalse(PlaybackPolicy.shouldRecordWatch(false, 100_000L))
+        assertFalse(PlaybackPolicy.shouldRecordWatch(true, 2_999L))
+        assertTrue(PlaybackPolicy.shouldRecordWatch(true, 3_000L))
+        assertTrue(PlaybackPolicy.shouldRecordWatch(true, 65_000L))
+        assertFalse(PlaybackPolicy.shouldRecordWatch(false, 0L))
+    }
+
     @Test fun onlyOneAuthRefreshForRejectedPlaybackUrl() {
         assertTrue(PlaybackPolicy.canRefreshRejectedLink(401, 0))
         assertTrue(PlaybackPolicy.canRefreshRejectedLink(403, 0))
