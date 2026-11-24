@@ -116,7 +116,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:4,features:["multipart-mp4","processor-hls","studio-ops"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:5,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery"]});
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
         return new Response("window.addisreelPassword={newSalt:"+newSalt.toString()+",deriveProof:"+deriveProof.toString()+"};\n",{
