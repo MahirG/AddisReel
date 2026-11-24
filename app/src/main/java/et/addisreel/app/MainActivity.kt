@@ -777,11 +777,33 @@ private fun AddisReelApp() {
                         }
                         val favoriteGenres = viewingHistory.mapNotNull { title -> catalog.find { it.title == title }?.genre }
                             .groupingBy { it }.eachCount()
+                        // Recommendations use only local history, completion and bookmarks.
+                        // No personal viewing data is transmitted to the catalog API.
+                        val recommendationOrder = remember(catalog, viewingHistory, saved, libraryCompletionRevision) {
+                            DiscoveryRanker.recommend(
+                                catalog.map { drama ->
+                                    DiscoveryRanker.Signal(
+                                        key = drama.id.ifBlank { drama.title },
+                                        genre = drama.genre,
+                                        saved = drama.title in saved,
+                                        completed = PlaybackPolicy.isFullyWatched(
+                                            preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty(),
+                                            drama.episodes
+                                        ),
+                                        historyIndex = viewingHistory.indexOf(drama.title)
+                                    )
+                                }, favoriteGenres
+                            ).withIndex().associate { it.value to it.index }
+                        }
+                        val personalized = catalog.sortedBy { drama ->
+                            recommendationOrder[drama.id.ifBlank { drama.title }] ?: Int.MAX_VALUE
+                        }
                         val filtered = when (discoverSort) {
                             "A–Z" -> matches.sortedBy { it.title }
                             "Most episodes" -> matches.sortedByDescending { it.episodes }
-                            "For You" -> matches.sortedWith(compareByDescending<Drama> { favoriteGenres[it.genre] ?: 0 }
-                                .thenByDescending { it.title in saved })
+                            "For You" -> matches.sortedBy { drama ->
+                                recommendationOrder[drama.id.ifBlank { drama.title }] ?: Int.MAX_VALUE
+                            }
                             "Recently watched" -> matches.sortedWith(compareBy { drama ->
                                 val index = viewingHistory.indexOf(drama.title)
                                 if (index < 0) Int.MAX_VALUE else index
@@ -854,11 +876,8 @@ private fun AddisReelApp() {
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
-                                val preferredGenre = favoriteGenres.maxByOrNull { it.value }?.key
-                                val featured = catalog.firstOrNull { it.id.isNotBlank() && it.genre == preferredGenre }
-                                    ?: catalog.firstOrNull { it.id.isNotBlank() && it.title in saved }
-                                    ?: catalog.firstOrNull { it.id.isNotBlank() }
-                                    ?: catalog.first()
+                                val featured = personalized.firstOrNull { it.id.isNotBlank() }
+                                    ?: personalized.first()
                                     item {
                                 ElevatedCard(
                                     onClick = { selectDrama(featured); tab = 0 },
@@ -997,8 +1016,7 @@ private fun AddisReelApp() {
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                                             ) {
-                                                catalog.sortedWith(compareByDescending<Drama> { favoriteGenres[it.genre] ?: 0 }
-                                                    .thenByDescending { it.title in saved }).take(10).forEach { drama ->
+                                                personalized.take(10).forEach { drama ->
                                                     Card(
                                                         onClick = { selectDrama(drama); tab = 0 },
                                                         modifier = Modifier.width(142.dp),
