@@ -137,7 +137,7 @@ export default {
     const path = url.pathname;
     try {
       if (request.method === "GET" && path === "/health")
-        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,features:["multipart-mp4","processor-hls","studio-ops","processor-job-recovery","catalog-etag","creator-verification","exclusive-rights"]});
       // Liveness alone cannot prove the D1 job migration was applied.
       // Readiness is deliberately sanitized: no media keys, owner data or secrets.
       if (request.method === "GET" && path === "/health/ready") {
@@ -145,10 +145,12 @@ export default {
         try {
           await env.DB.prepare("SELECT id FROM video_processing_jobs LIMIT 1").first();
           await env.DB.prepare("SELECT id FROM series LIMIT 1").first();
+          await env.DB.prepare("SELECT id FROM title_rights LIMIT 1").first();
+          await env.DB.prepare("SELECT series_id FROM grandfathered_rights LIMIT 1").first();
         } catch {
           return reply({status:"degraded",service:"addisreel-catalog"},503);
         }
-        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding"]});
+        return reply({status:"ok",service:"addisreel-catalog",phase:6,checks:["catalog-db","processing-jobs","media-binding","exclusive-rights-registry"]});
       }
       if (path.startsWith("/v1/auth/")) return handleAuth(request,env,url);
       if (request.method === "GET" && path === "/admin/password-client.js")
