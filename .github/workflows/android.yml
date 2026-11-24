@@ -100,6 +100,26 @@ jobs:
           test "$STATUS" = 401 || { echo "::error::Protected processor route returned $STATUS"; exit 1; }
           echo "### Build 22 live backend checks passed" >> "$GITHUB_STEP_SUMMARY"
 
+  live-build23-smoke:
+    if: github.ref == 'refs/heads/feature/addisreel-v140-watch-integrity'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify live rights-gated backend and catalog caching
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT=https://addisreel-catalog.eddieaman475.workers.dev
+          curl -fsS "$ROOT/health/ready" | python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["status"]=="ok" and x["phase"]>=6 and "processing-jobs" in x["checks"]'
+          curl -fsS -D "$RUNNER_TEMP/catalog-headers" "$ROOT/v1/catalog" -o "$RUNNER_TEMP/catalog.json"
+          python3 -c 'import json,sys;assert isinstance(json.load(open(sys.argv[1]))["series"],list)' "$RUNNER_TEMP/catalog.json"
+          ETAG=$(grep -i '^etag:' "$RUNNER_TEMP/catalog-headers" | cut -d' ' -f2- | tr -d '\r')
+          test -n "$ETAG"
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$ROOT/v1/catalog")
+          test "$STATUS" = 304 || { echo "::error::Catalog cache check returned $STATUS"; exit 1; }
+          echo "### Build 23 backend verified" >> "$GITHUB_STEP_SUMMARY"
+
   catalog-api-check:
     runs-on: ubuntu-latest
     permissions:

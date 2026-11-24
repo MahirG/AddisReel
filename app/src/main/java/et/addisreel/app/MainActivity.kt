@@ -304,27 +304,34 @@ private fun AddisReelApp() {
         viewingHistory = (listOf(title) + viewingHistory.filterNot { it == title }).take(12)
         preferences.edit().putString("viewing_history", viewingHistory.joinToString("|")).apply()
     }
+    fun savedResumeEpisode(drama: Drama): Int = PlaybackPolicy.resumeEpisode(
+        preferences.getInt("episode_" + drama.title, 1), drama.episodes,
+        preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty()
+    )
     var selected by remember { mutableStateOf(catalog.find { it.title == recentlyWatched } ?: catalog.first()) }
-    var episode by remember { mutableIntStateOf(preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)) }
+    var episode by remember { mutableIntStateOf(savedResumeEpisode(selected)) }
     // A rejected signed URL gets one automatic credential refresh per episode,
     // never an unlimited refresh loop against an unavailable or forbidden asset.
     var tokenRefreshAttempts by remember(selected.id, episode) { mutableIntStateOf(0) }
+    // Browsing a title or tapping a chapter is not proof of watching it.
+    // Mark history and last-reached episode only when the player actually runs.
+    fun markPlaybackStarted(title: String, chapter: Int) {
+        recentlyWatched = title
+        recordViewing(title)
+        preferences.edit()
+            .putString("recently_watched", title)
+            .putInt("episode_" + title, chapter)
+            .apply()
+    }
     fun selectDrama(drama: Drama) {
-        recentlyWatched = drama.title
-        recordViewing(drama.title)
-        preferences.edit().putString("recently_watched", drama.title).apply()
         selected = drama
         showEpisodes = false
         showFullDescription = false
         cinemaMode = false
-        episode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)
+        episode = savedResumeEpisode(drama)
     }
     fun selectEpisode(next: Int) {
-        recentlyWatched = selected.title
-        recordViewing(selected.title)
-        preferences.edit().putString("recently_watched", selected.title).apply()
         episode = next.coerceIn(1, selected.episodes)
-        preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
     LaunchedEffect(catalogRefreshRequest) {
         // Re-read cache on each retry so a 304 never uses an expired snapshot.
@@ -347,7 +354,7 @@ private fun AddisReelApp() {
                     ?: published.find { it.title == recentlyWatched }
                     ?: published.first()
                 selected = restored
-                episode = preferences.getInt("episode_" + restored.title, 1).coerceIn(1, restored.episodes)
+                episode = savedResumeEpisode(restored)
                 withContext(Dispatchers.IO) {
                     rememberPublicTitles(preferences, published, response.etag)
                 }
@@ -553,7 +560,7 @@ private fun AddisReelApp() {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
-                    val lastReached = preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)
+                    val lastReached = savedResumeEpisode(selected)
                     // Only completed episodes count as watched; jumping ahead is not completion.
                     val watchedEpisodes = preferences.getStringSet("watched_" + selected.title, emptySet())?.toSet().orEmpty()
                     val watchedCount = watchedEpisodes.count { number -> number.toIntOrNull()?.let { it in 1..selected.episodes } == true }
@@ -674,7 +681,12 @@ private fun AddisReelApp() {
                                         tokenRefreshAttempts += 1
                                         streamRefresh += 1
                                     }
-                                }, onPrepareNext = { prepareNextEpisode() }, onWatchedToEnd = {
+                                }, onPrepareNext = { prepareNextEpisode() }, onPlaybackStarted = {
+                                    markPlaybackStarted(selected.title, episode)
+                                }, onWatchedToEnd = {
+                                    // A very short episode may finish before the 3-second
+                                    // history threshold; completion still counts as viewing.
+                                    markPlaybackStarted(selected.title, episode)
                                     val key = "watched_" + selected.title
                                     val updated = preferences.getStringSet(key, emptySet())?.toSet().orEmpty() + episode.toString()
                                     preferences.edit().putStringSet(key, updated).apply()
@@ -1263,7 +1275,7 @@ private fun AddisReelApp() {
                                 items(filtered) { drama ->
                                     DramaRow(
                                         drama,
-                                        resumeEpisode = if (drama.title in viewingHistory) preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes) else null
+                                        resumeEpisode = if (drama.title in viewingHistory) savedResumeEpisode(drama) else null
                                     ) { detailDrama = drama }
                                 }
                             }
@@ -1350,15 +1362,27 @@ private fun AddisReelApp() {
                                 item { Text("${libraryTitles.size} ${libraryFilter.lowercase()} dramas", color = Color.LightGray) }
                                 items(libraryTitles) { drama ->
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        DramaRow(drama, resumeEpisode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)) { selectDrama(drama); tab = 0 }
+                                        val started = drama.title in viewingHistory
+                                        val fullyWatched = PlaybackPolicy.isFullyWatched(
+                                            preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty(),
+                                            drama.episodes
+                                        )
+                                        val continueEpisode = savedResumeEpisode(drama)
+                                        DramaRow(drama, resumeEpisode = if (started) continueEpisode else null) {
+                                            selectDrama(drama); tab = 0
+                                        }
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            val lastEpisode = preferences.getInt("episode_" + drama.title, 1)
-                                                .coerceIn(1, drama.episodes)
-                                            Text("Continue · Episode $lastEpisode of ${drama.episodes}", color = Gold, fontSize = 12.sp)
+                                            Text(
+                                                when {
+                                                    fullyWatched -> "Watch again · Episode 1"
+                                                    started -> "Continue · Episode $continueEpisode of ${drama.episodes}"
+                                                    else -> "Start watching · Episode 1"
+                                                }, color = Gold, fontSize = 12.sp
+                                            )
                                             if (libraryFilter == "Saved") {
                                                 TextButton(onClick = { toggleSaved(drama.title) }) {
                                                     Icon(Icons.Default.BookmarkRemove, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1495,7 +1519,7 @@ private fun AddisReelApp() {
         }
     }
 }
-@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, nextEpisodeFetchedAtMs: Long, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPlaybackUrlExpired: (Int) -> Unit, onPrepareNext: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
+@Composable private fun Video(url:String, episodeKey:String, fillVideo: Boolean, subtitlesEnabled: Boolean, quality: String, playbackSpeed: Float, nextEpisodeUrl: String?, nextEpisodeFetchedAtMs: Long, hasNextEpisode: Boolean, autoPlayNext: Boolean, onAutoNextToggle: () -> Unit, onPlaybackUrlExpired: (Int) -> Unit, onPrepareNext: () -> Unit, onPlaybackStarted: () -> Unit, onWatchedToEnd: () -> Unit, onEpisodeCompleted: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) { context.getSharedPreferences("addisreel_playback", android.content.Context.MODE_PRIVATE) }
@@ -1562,7 +1586,10 @@ private fun AddisReelApp() {
             .setLoadControl(loadControl)
             .build().apply {
             setMediaItem(MediaItem.fromUri(url))
-            val savedPosition = preferences.getLong(positionKey, 0L)
+            val savedPosition = PlaybackPolicy.safeResumePositionMs(
+                preferences.getLong(positionKey, 0L),
+                preferences.getLong("duration_" + episodeKey, 0L)
+            )
             if (savedPosition > 0L) seekTo(savedPosition)
             repeatMode = ExoPlayer.REPEAT_MODE_OFF
             playWhenReady = true
@@ -1614,6 +1641,22 @@ private fun AddisReelApp() {
             // A restored connection deserves a fresh, bounded retry budget.
             retryCount = 0
             observedOutage = false
+        }
+    }
+    // A real video must have played for at least three seconds before it can
+    // enter Viewing History. Tapping cards, previews and unavailable streams
+    // never influence history or recommendation preferences.
+    val latestPlaybackStarted by rememberUpdatedState(onPlaybackStarted)
+    LaunchedEffect(player, episodeKey) {
+        var recorded = false
+        while (true) {
+            delay(1_000L)
+            if (!recorded && PlaybackPolicy.shouldRecordWatch(
+                    player.isPlaying, player.currentPosition
+                )) {
+                recorded = true
+                latestPlaybackStarted()
+            }
         }
     }
     // Persist a short-drama resume point even when Android terminates the process
