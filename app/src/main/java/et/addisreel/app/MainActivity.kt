@@ -96,7 +96,7 @@ private fun posterVariant(url: String?, widthPx: Int): String? {
 }
 
 @Composable
-private fun posterModel(url: String?, widthPx: Int = 540, heightPx: Int = 810): ImageRequest {
+private fun posterModel(url: String?, widthPx: Int = 320, heightPx: Int = 480): ImageRequest {
     val context = LocalContext.current
     return remember(context, url, widthPx, heightPx) {
         ImageRequest.Builder(context)
@@ -251,6 +251,9 @@ private fun AddisReelApp() {
     var catalogRefreshRequest by remember { mutableIntStateOf(0) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
+    // Never render a stale stream from an older series or episode while a new
+    // playback token is being resolved.
+    var resolvedStreamKey by remember { mutableStateOf<Pair<String, Int>?>(null) }
     var nextEpisodeUrl by remember { mutableStateOf<String?>(null) }
     var nextEpisodeFetchedAtMs by remember { mutableLongStateOf(0L) }
     val appScope = rememberCoroutineScope()
@@ -364,10 +367,16 @@ private fun AddisReelApp() {
     // The request cache is shared with AsyncImage; cancelling Home cancels pending work.
     LaunchedEffect(catalog, tab, homeSearchExpanded) {
         if (tab == 1 && !homeSearchExpanded && catalog.isNotEmpty()) {
-            delay(400L) // Give the featured hero priority over below-the-fold artwork.
+            delay(600L) // Prioritize visible artwork before warming below-the-fold tiles.
             val network = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            if (!network.isActiveNetworkMetered) {
-                val warmups = catalog.drop(1).take(3).mapNotNull { it.posterUrl }.map { poster ->
+            val active = network.activeNetwork
+            val capabilities = active?.let { network.getNetworkCapabilities(it) }
+            val validated = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+            if (NetworkBudgetPolicy.shouldWarmPosters(
+                    homeVisible = tab == 1, searchExpanded = homeSearchExpanded,
+                    validatedNetwork = validated, metered = network.isActiveNetworkMetered
+                )) {
+                val warmups = catalog.drop(1).take(2).mapNotNull { it.posterUrl }.map { poster ->
                     context.imageLoader.enqueue(
                         ImageRequest.Builder(context).data(posterVariant(poster, 320)).size(320, 480)
                             .precision(Precision.INEXACT).build()
@@ -379,39 +388,46 @@ private fun AddisReelApp() {
     }
     var streamRefresh by remember { mutableIntStateOf(0) }
     var streamLoading by remember { mutableStateOf(false) }
-    LaunchedEffect(selected.id, episode, streamRefresh) {
+    // Launch playback requests only while the Watch surface is actually shown.
+    // Opening the app, searching, viewing details, or entering Library costs
+    // zero /v1/play requests. Episode links remain short lived and uncached.
+    LaunchedEffect(selected.id, episode, streamRefresh, tab == 0) {
+        if (!NetworkBudgetPolicy.shouldResolveEpisode(tab == 0, selected.id)) {
+            episodeUrl = null
+            resolvedStreamKey = null
+            nextEpisodeUrl = null
+            streamLoading = false
+            return@LaunchedEffect
+        }
         episodeUrl = null
+        resolvedStreamKey = null
         nextEpisodeUrl = null
         nextEpisodeFetchedAtMs = 0L
-        streamLoading = selected.id.isNotBlank()
+        streamLoading = true
         val seriesId = selected.id
         val currentEpisode = episode
-        if (seriesId.isNotBlank()) {
-            val warm = prefetchedEpisode
-            episodeUrl = if (
-                streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode &&
-                PlaybackPolicy.freshPlaybackLink(android.os.SystemClock.elapsedRealtime(), prefetchedAtMs, 60_000L)
-            ) {
-                prefetchedEpisode = null
-                warm.third
-            } else {
-                runCatching {
-                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode) }
-                }.getOrNull()
-            }
-            // Fetch the next episode's short-lived playback URL in advance.
-            // Never pre-download media or retain URLs across app launches.
-            streamLoading = false
-            if (episodeUrl != null && currentEpisode < selected.episodes) {
-                val nextUrl = runCatching {
-                    withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode + 1) }
-                }.getOrNull()
-                prefetchedEpisode = nextUrl?.let { Triple(seriesId, currentEpisode + 1, it) }
-                prefetchedAtMs = if (nextUrl != null) android.os.SystemClock.elapsedRealtime() else 0L
-                nextEpisodeUrl = nextUrl
-                nextEpisodeFetchedAtMs = prefetchedAtMs
-            }
+        val warm = prefetchedEpisode
+        val resolved = if (
+            streamRefresh == 0 && warm?.first == seriesId && warm.second == currentEpisode &&
+            PlaybackPolicy.freshPlaybackLink(android.os.SystemClock.elapsedRealtime(), prefetchedAtMs, 60_000L)
+        ) {
+            prefetchedEpisode = null
+            warm.third
+        } else {
+            runCatching {
+                withContext(Dispatchers.IO) { fetchEpisodeStream(seriesId, currentEpisode) }
+            }.getOrNull()
         }
+        // LaunchedEffect cancellation discards responses when changing titles
+        // or tabs; a previous video's source must never flash on this surface.
+        if (resolved != null) {
+            episodeUrl = resolved
+            resolvedStreamKey = seriesId to currentEpisode
+        }
+        streamLoading = false
+        // Do not eagerly resolve the next episode here. The actual player asks
+        // for it only near the final 35 seconds, conserving requests and
+        // avoiding tokens that expire before viewers finish a long episode.
     }
     // Refresh expiring playback credentials near the episode ending; a URL
     // fetched at the start can be stale by the time a longer episode finishes.
@@ -646,7 +662,9 @@ private fun AddisReelApp() {
                                     )
                                 }
                         ) {
-                            val videoUrl = if (selected.id.isNotBlank()) episodeUrl else selected.url
+                            val videoUrl = if (selected.id.isNotBlank()) {
+                                episodeUrl.takeIf { resolvedStreamKey == (selected.id to episode) }
+                            } else selected.url
                             if (videoUrl != null) {
                                 Video(videoUrl, (selected.id.ifBlank { selected.title }) + "_episode_" + episode, fillVideo = fillVideo, subtitlesEnabled = subtitlesEnabled, quality = videoQuality, playbackSpeed = playbackSpeed, nextEpisodeUrl = nextEpisodeUrl, nextEpisodeFetchedAtMs = nextEpisodeFetchedAtMs, hasNextEpisode = episode < selected.episodes, autoPlayNext = autoNextEnabled, onAutoNextToggle = {
                                     autoNextEnabled = !autoNextEnabled
