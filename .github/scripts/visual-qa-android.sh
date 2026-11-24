@@ -9,7 +9,7 @@ adb_retry() {
     if timeout 45 adb "$@"; then return 0; fi
     echo "ADB retry $attempt: $*" >&2
     timeout 15 adb reconnect offline >&2 || true
-    timeout 30 adb wait-for-device >&2 || true
+    timeout 60 adb wait-for-device >&2 || true
     sleep 3
   done
   return 1
@@ -45,7 +45,7 @@ trap 'adb shell settings put system font_scale 1.0 >/dev/null 2>&1 || true; adb 
 
 tap_tab() {
   local tab="$1" x y size width height dpi offset
-  size=$(adb shell wm size | tr -d '\r' | tail -n1 | grep -oE '[0-9]+x[0-9]+')
+  size=$(adb_retry shell wm size | tr -d '\r' | tail -n1 | grep -oE '[0-9]+x[0-9]+')
   width=$(printf '%s' "$size" | cut -d x -f 1)
   height=$(printf '%s' "$size" | cut -d x -f 2)
   dpi=$(adb_retry shell wm density | tr -d '\r' | tail -n1 | grep -oE '[0-9]+' | tail -n1)
@@ -64,11 +64,12 @@ tap_tab() {
 
 capture_group() {
   local stage="$1" theme="$2" font="$3" device="$4" group tab
-  adb shell cmd uimode night "$theme" >/dev/null
-  adb shell settings put system font_scale "$font"
+  adb_retry shell cmd uimode night "$theme" >/dev/null
+  adb_retry shell settings put system font_scale "$font"
   adb shell am force-stop et.addisreel.app || true
   adb_retry shell am start -W -n "$APP"
   sleep 5
+  adb_retry shell getprop sys.boot_completed
   group="$stage-$device-$theme-font$font"
   for tab in home watch library premium; do
     tap_tab "$tab"
@@ -84,8 +85,8 @@ capture_group() {
 capture_stage() {
   local stage="$1" apk="$2"
   adb uninstall et.addisreel.app >/dev/null 2>&1 || true
-  adb install "$apk"
-  adb shell pm clear et.addisreel.app >/dev/null
+  adb_retry install "$apk"
+  adb_retry shell pm clear et.addisreel.app >/dev/null
   capture_group "$stage" yes 1.0 normal
   capture_group "$stage" no 1.0 normal
   capture_group "$stage" yes 1.5 normal
