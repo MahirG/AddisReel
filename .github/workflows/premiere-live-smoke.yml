@@ -1,0 +1,77 @@
+name: Creator Studio Phase 3 live premiere verification
+on:
+  push:
+    branches: ['feature/addisreel-creator-studio-phase3-premieres']
+    paths:
+      - 'backend/premieres.js'
+      - 'backend/premiere-page.js'
+      - 'backend/premiere-client.js'
+      - 'backend/premiere-public-page.js'
+      - 'backend/premiere-public-client.js'
+      - 'backend/rights.js'
+      - 'backend/worker.js'
+      - 'backend/tests/premieres.test.mjs'
+      - '.github/workflows/premiere-live-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  premiere-live-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify complete Worker tests including clock and exclusive rights protection
+        run: node --test backend/tests/*.test.mjs
+      - name: Check live premiere schedule readiness, countdown and private admin access
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT='https://addisreel-catalog.eddieaman475.workers.dev'
+          curl --retry 4 --retry-delay 2 -fsS "$ROOT/health/ready" |
+            python3 -c 'import json,sys;x=json.load(sys.stdin);assert x["status"]=="ok" and "premiere-schedules" in x["checks"] and "exclusive-rights-registry" in x["checks"]'
+          curl --retry 4 --retry-delay 2 -fsS "$ROOT/admin/premieres.js" -o "$RUNNER_TEMP/admin-premiere-client.js"
+          grep -q 'schedulePremiere' "$RUNNER_TEMP/admin-premiere-client.js"
+          grep -q 'episodeSeries' "$RUNNER_TEMP/admin-premiere-client.js"
+          curl --retry 4 --retry-delay 2 -fsS "$ROOT/premiere-countdown.js" -o "$RUNNER_TEMP/public-premiere-client.js"
+          grep -q 'premiereAtUtc' "$RUNNER_TEMP/public-premiere-client.js"
+          curl --retry 4 --retry-delay 2 -fsS "$ROOT/premieres" -o "$RUNNER_TEMP/public-premiere-page.html"
+          grep -q 'id="premieres"' "$RUNNER_TEMP/public-premiere-page.html"
+          curl --retry 4 --retry-delay 2 -fsS -D "$RUNNER_TEMP/premieres-headers" "$ROOT/v1/premieres" -o "$RUNNER_TEMP/premieres.json"
+          python3 - "$RUNNER_TEMP/premieres.json" <<'PY'
+          import json,sys,datetime
+          p=json.load(open(sys.argv[1]))
+          assert isinstance(p['premieres'],list) and isinstance(p['serverNow'],str)
+          datetime.datetime.fromisoformat(p['serverNow'].replace('Z','+00:00'))
+          for item in p['premieres']:
+              assert isinstance(item['remainingSeconds'],int)
+              assert item['remainingSeconds']>=0
+              assert 'agreement_ref' not in item and 'creator_id' not in item
+              assert 'review_note' not in item and 'evidence_key' not in item
+          PY
+          grep -qi '^cache-control: no-store' "$RUNNER_TEMP/premieres-headers"
+          ANON=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/v1/admin/premieres")
+          test "$ANON" = 401 || { echo "::error::Anonymous premiere registry returned $ANON"; exit 1; }
+          PAGE=$(curl -sS -o /dev/null -w '%{http_code}' "$ROOT/admin/premieres")
+          test "$PAGE" = 302 || { echo "::error::Private calendar unexpectedly exposed: $PAGE"; exit 1; }
+          FORGED=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT \
+            -H 'Origin: https://invalid.example' -H 'Content-Type: application/json' \
+            -d '{"action":"schedule"}' "$ROOT/v1/admin/premieres/unverified")
+          test "$FORGED" = 403 || { echo "::error::Cross-origin premiere modification returned $FORGED"; exit 1; }
+          curl --retry 4 --retry-delay 2 -fsS -D "$RUNNER_TEMP/catalog-headers" "$ROOT/v1/catalog" -o "$RUNNER_TEMP/catalog.json"
+          python3 - "$RUNNER_TEMP/catalog.json" <<'PY'
+          import json,sys
+          series=json.load(open(sys.argv[1]))['series']
+          assert isinstance(series,list) and len(series)>=2, 'Existing published films became unavailable'
+          assert all('creator_id' not in s and 'agreement_ref' not in s for s in series)
+          PY
+          ETAG=$(grep -i '^etag:' "$RUNNER_TEMP/catalog-headers" | cut -d' ' -f2- | tr -d '\r')
+          test -n "$ETAG"
+          STATUS=$(curl -sS -o /dev/null -w '%{http_code}' -H "If-None-Match: $ETAG" "$ROOT/v1/catalog")
+          test "$STATUS" = 304 || { echo "::error::Catalog conditional request returned $STATUS"; exit 1; }
+          echo "### Phase 3 live premiere scheduler and public countdown verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "Owner calendar: $ROOT/admin/premieres" >> "$GITHUB_STEP_SUMMARY"
+          echo "Public premiere calendar: $ROOT/premieres" >> "$GITHUB_STEP_SUMMARY"
