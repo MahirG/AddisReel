@@ -248,6 +248,7 @@ private fun AddisReelApp() {
     val cachedTitles = remember(preferences) { cachedPublicTitles(preferences) }
     var catalog by remember { mutableStateOf(cachedTitles.ifEmpty { previewCatalog }) }
     var catalogStatus by remember { mutableStateOf(if (cachedTitles.isNotEmpty()) "cached" else "loading") }
+    var catalogRefreshRequest by remember { mutableIntStateOf(0) }
     var remoteCatalogAvailable by remember { mutableStateOf(false) }
     var episodeUrl by remember { mutableStateOf<String?>(null) }
     var nextEpisodeUrl by remember { mutableStateOf<String?>(null) }
@@ -322,17 +323,19 @@ private fun AddisReelApp() {
         episode = next.coerceIn(1, selected.episodes)
         preferences.edit().putInt("episode_" + selected.title, episode).apply()
     }
-    LaunchedEffect(Unit) {
-        val knownEtag = if (cachedTitles.isNotEmpty())
+    LaunchedEffect(catalogRefreshRequest) {
+        // Re-read cache on each retry so a 304 never uses an expired snapshot.
+        val localTitles = withContext(Dispatchers.IO) { cachedPublicTitles(preferences) }
+        val knownEtag = if (localTitles.isNotEmpty())
             preferences.getString(CATALOG_CACHE_ETAG_KEY, null)?.takeIf { CatalogCachePolicy.validEtag(it) }
         else null
         val response = runCatching {
             withContext(Dispatchers.IO) { fetchPublishedCatalog(knownEtag) }
         }.getOrNull()
         if (response == null) {
-            catalogStatus = if (cachedTitles.isNotEmpty()) "offline" else "unavailable"
+            catalogStatus = if (localTitles.isNotEmpty()) "offline" else "unavailable"
         } else {
-            val published = if (response.unchanged) cachedTitles else response.titles.orEmpty()
+            val published = if (response.unchanged) localTitles else response.titles.orEmpty()
             if (published.isNotEmpty()) {
                 catalog = published
                 remoteCatalogAvailable = true
@@ -866,16 +869,27 @@ private fun AddisReelApp() {
                                 Icon(if (homeSearchExpanded) Icons.Default.Close else Icons.Default.Search, contentDescription = if (homeSearchExpanded) "Close search" else "Search dramas", tint = Gold)
                             }
                         }
-                        if (!remoteCatalogAvailable) Text(
-                            when (catalogStatus) {
-                                "cached" -> "Showing saved titles · checking for new episodes…"
-                                "offline" -> "Offline · saved titles shown; reconnect to watch"
-                                "empty" -> "No published episodes yet · these are previews"
-                                "unavailable" -> "Could not load new stories · check your connection"
-                                else -> "Loading published episodes…"
-                            },
-                            modifier=Modifier.padding(horizontal=16.dp, vertical=4.dp), fontSize=11.sp, color=Gold
-                        )
+                        if (!remoteCatalogAvailable) Row(
+                            Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=2.dp),
+                            verticalAlignment=Alignment.CenterVertically
+                        ) {
+                            Text(
+                                when (catalogStatus) {
+                                    "cached" -> "Saved titles · checking for new episodes…"
+                                    "offline" -> "Offline · reconnect to stream saved titles"
+                                    "empty" -> "No published episodes yet · previews only"
+                                    "unavailable" -> "Unable to load stories · check internet"
+                                    else -> "Loading published episodes…"
+                                }, modifier=Modifier.weight(1f), fontSize=11.sp, color=Gold
+                            )
+                            if (catalogStatus != "cached" && catalogStatus != "loading") {
+                                TextButton(onClick={ catalogStatus = "loading"; catalogRefreshRequest++ }) {
+                                    Icon(Icons.Default.Refresh, contentDescription=null, modifier=Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Retry", fontSize=12.sp)
+                                }
+                            }
+                        }
                         val genres = remember(catalog) { listOf("All") + catalog.map { it.genre }.distinct() }
                         val matches = catalog.filter { drama ->
                             (!discoverOnlySaved || drama.title in saved) &&
