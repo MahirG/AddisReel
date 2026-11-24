@@ -15,4 +15,24 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="app_updates">App updates</string>
+    <string name="studio_title">Creator Studio</string>
+    <string name="studio_back">Back</string>
+    <string name="studio_menu">Menu</string>
+    <string name="studio_section_content">Content Studio</string>
+    <string name="studio_section_creators">Filmmakers</string>
+    <string name="studio_section_rights">Exclusive rights</string>
+    <string name="studio_refresh">Refresh</string>
+    <string name="studio_blocked_link">Only trusted AddisReel Studio pages are allowed inside the app.</string>
+    <string name="studio_network_error">Could not connect to Studio. Check your internet connection.</string>
+    <string name="studio_tls_error">Secure connection failed. Studio access was blocked.</string>
+    <string name="studio_picker_error">Could not open the document picker.</string>
+    <string name="studio_download_blocked">Only protected agreement PDFs can be opened inside Studio.</string>
+    <string name="studio_pdf_error">Could not open the protected agreement. Please sign in again or retry.</string>
+    <string name="studio_pdf_title">Private signed agreement</string>
+    <string name="studio_pdf_page_description">Agreement document page</string>
+    <string name="studio_previous">Previous</string>
+    <string name="studio_next">Next</string>
+    <string name="creator_studio_admin_label">Creator Studio · Staff access</string>
+    <string name="creator_studio_description">Manage filmmaker verification and exclusive film rights inside AddisReel. A secure owner sign-in is required.</string>
+    <string name="creator_studio_open">Open Creator Studio</string>
 </resources>
