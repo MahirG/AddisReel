@@ -14,6 +14,8 @@ import { creatorClient } from "./creator-client.js";
 import { premiereGate, episodeGate, canStageScheduledRelease, publicPremieres, handlePremiereAdmin } from "./premieres.js";
 import { premiereHtml } from "./premiere-page.js";
 import { premiereClient } from "./premiere-client.js";
+import { publicPremiereHtml } from "./premiere-public-page.js";
+import { publicPremiereClient } from "./premiere-public-client.js";
 
 const publicHeaders = { "Access-Control-Allow-Origin": "*", "X-Content-Type-Options": "nosniff" };
 const JSON_TYPE = "application/json; charset=utf-8";
@@ -163,6 +165,10 @@ export default {
           headers:{"Content-Type":"application/javascript; charset=utf-8",
             "Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}
         });
+      if (request.method === "GET" && path === "/premieres")
+        return new Response(publicPremiereHtml,{headers:{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff","Referrer-Policy":"no-referrer","Content-Security-Policy":"default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; img-src 'self' data:; form-action 'none'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'"}});
+      if (request.method === "GET" && path === "/premiere-countdown.js")
+        return new Response(publicPremiereClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
       if (request.method === "GET" && path === "/admin/premieres.js")
         return new Response(premiereClient,{headers:{"Content-Type":"application/javascript; charset=utf-8","Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
       if (request.method === "GET" && path === "/admin/premieres") {
