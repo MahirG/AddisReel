@@ -524,7 +524,7 @@ private fun AddisReelApp() {
                         }
                         Text(
                             if (drama.id.isBlank()) "Preview title · Streaming begins when licensed content is published." else "Licensed Ethiopian short-drama catalog.",
-                            fontSize = 12.sp,
+                            fontSize = AddisTypeSize.caption,
                             color = AddisColors.textSecondary
                         )
                     }
@@ -558,18 +558,18 @@ private fun AddisReelApp() {
                 containerColor = AddisColors.elevated,
                 dragHandle = { BottomSheetDefaults.DragHandle(color = Gold) }
             ) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-                    Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                    Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
+                Column(Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.comfortable)) {
+                    Text(selected.title, fontSize = AddisTypeSize.headingSmall, fontWeight = AddisTypeWeight.strong)
+                    Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = AddisTypeSize.caption)
                     val lastReached = savedResumeEpisode(selected)
                     // Only completed episodes count as watched; jumping ahead is not completion.
                     val watchedEpisodes = preferences.getStringSet("watched_" + selected.title, emptySet())?.toSet().orEmpty()
                     val watchedCount = watchedEpisodes.count { number -> number.toIntOrNull()?.let { it in 1..selected.episodes } == true }
                     Spacer(Modifier.height(12.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Watched $watchedCount · Continue at EP $lastReached", color = AddisColors.textSecondary, fontSize = 12.sp)
+                        Text("Watched $watchedCount · Continue at EP $lastReached", color = AddisColors.textSecondary, fontSize = AddisTypeSize.caption)
                         Spacer(Modifier.weight(1f))
-                        Text("${PlaybackPolicy.completedPercent(watchedCount, selected.episodes)}%", color = Gold, fontSize = 12.sp)
+                        Text("${PlaybackPolicy.completedPercent(watchedCount, selected.episodes)}%", color = Gold, fontSize = AddisTypeSize.caption)
                     }
                     Spacer(Modifier.height(6.dp))
                     LinearProgressIndicator(
@@ -589,12 +589,12 @@ private fun AddisReelApp() {
                             val watched = number.toString() in watchedEpisodes
                             Surface(
                                 onClick = { selectEpisode(number); showEpisodes = false },
-                                shape = RoundedCornerShape(14.dp),
+                                shape = RoundedCornerShape(AddisRadius.medium),
                                 color = if (active) AddisColors.selected else AddisColors.elevated,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
-                                    Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                                    Modifier.padding(horizontal = AddisSpacing.standard, vertical = 14.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -604,7 +604,7 @@ private fun AddisReelApp() {
                                     )
                                     Spacer(Modifier.width(14.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text("Episode $number", fontWeight = FontWeight.SemiBold)
+                                        Text("Episode $number", fontWeight = AddisTypeWeight.strong)
                                         Text(
                                             when {
                                                 active -> "Now playing"
@@ -612,7 +612,7 @@ private fun AddisReelApp() {
                                                 number == lastReached -> "Continue here"
                                                 else -> "Tap to watch"
                                             },
-                                            fontSize = 11.sp,
+                                            fontSize = AddisTypeSize.micro,
                                             color = if (active || watched || number == lastReached) Gold else AddisColors.textSecondary
                                         )
                                     }
@@ -636,7 +636,7 @@ private fun AddisReelApp() {
                         selected=tab==index,
                         onClick={tab=index},
                         icon={Icon(icon,contentDescription=name)},
-                        label={Text(name, style=MaterialTheme.typography.labelMedium, maxLines=1, overflow=TextOverflow.Ellipsis)},
+                        label={Text(name, style=AddisScript.style(name, MaterialTheme.typography.labelMedium), maxLines=2, overflow=TextOverflow.Ellipsis)},
                         alwaysShowLabel=false,
                         colors=NavigationBarItemDefaults.colors(
                             selectedIconColor=AddisColors.current.onAccent,
@@ -703,7 +703,7 @@ private fun AddisReelApp() {
                             } else {
                                 Column(
                                     Modifier.align(Alignment.Center).fillMaxWidth()
-                                        .padding(vertical = 32.dp),
+                                        .padding(vertical = AddisSpacing.large),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Icon(Icons.Default.Movie, null, Modifier.size(74.dp), tint=AddisCinema.accent)
@@ -722,7 +722,7 @@ private fun AddisReelApp() {
                                             streamLoading -> "Connecting securely to your episode"
                                             else -> "Check your internet connection and try again"
                                         },
-                                        fontSize = 12.sp,
+                                        fontSize = AddisTypeSize.caption,
                                         color = Color.Gray
                                     )
                                     if (selected.id.isNotBlank() && streamLoading) {
@@ -742,10 +742,10 @@ private fun AddisReelApp() {
                                         }
                                     }
                                     Spacer(Modifier.height(16.dp))
-                                    Text("Swipe up for next episode · down for previous", fontSize=11.sp, color=Color.Gray)
+                                    Text("Swipe up for next episode · down for previous", fontSize = AddisTypeSize.micro, color=Color.Gray)
                                 }
                             }
-                            IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color(0x990C0C10), RoundedCornerShape(50))) {
+                            IconButton(onClick = { cinemaMode = !cinemaMode }, modifier = Modifier.align(Alignment.TopEnd).padding(AddisSpacing.compact).background(Color(0x990C0C10), RoundedCornerShape(50))) {
                                 Icon(if (cinemaMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, contentDescription = if (cinemaMode) "Exit cinema mode" else "Cinema mode", tint = AddisCinema.accent)
                             }
                             // Two compact rows keep cinema controls usable on narrow phones.
@@ -753,9 +753,9 @@ private fun AddisReelApp() {
                                 Column(
                                     modifier = Modifier.align(Alignment.BottomCenter)
                                         .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 12.dp)
-                                        .background(Color(0xE0101016), RoundedCornerShape(22.dp))
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                                        .padding(horizontal = AddisSpacing.compact, vertical = AddisSpacing.compact)
+                                        .background(Color(0xE0101016), RoundedCornerShape(AddisRadius.sheet))
+                                        .padding(horizontal = AddisSpacing.small, vertical = AddisSpacing.micro),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     Row(
@@ -772,8 +772,8 @@ private fun AddisReelApp() {
                                     Text(
                                         "EP $episode / ${selected.episodes}",
                                         color = Color.White,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontSize = AddisTypeSize.caption,
+                                        fontWeight = AddisTypeWeight.strong
                                     )
                                     IconButton(
                                         onClick = { selectEpisode(episode + 1) },
@@ -789,7 +789,7 @@ private fun AddisReelApp() {
                                     Row(
                                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
                                     ) {
                                     IconButton(onClick = {
                                         subtitlesEnabled = !subtitlesEnabled
@@ -803,7 +803,7 @@ private fun AddisReelApp() {
                                     }
                                     Box {
                                         TextButton(onClick = { qualityMenuExpanded = true }) {
-                                            Text(videoQuality, color = AddisCinema.accent, fontSize = 12.sp)
+                                            Text(videoQuality, color = AddisCinema.accent, fontSize = AddisTypeSize.caption)
                                         }
                                         DropdownMenu(expanded = qualityMenuExpanded, onDismissRequest = { qualityMenuExpanded = false }) {
                                             listOf("Auto", "Data saver", "High").forEach { mode ->
@@ -817,7 +817,7 @@ private fun AddisReelApp() {
                                     }
                                     Box {
                                         TextButton(onClick = { speedMenuExpanded = true }) {
-                                            Text("${playbackSpeed}×", color = AddisCinema.accent, fontSize = 12.sp)
+                                            Text("${playbackSpeed}×", color = AddisCinema.accent, fontSize = AddisTypeSize.caption)
                                         }
                                         DropdownMenu(expanded = speedMenuExpanded, onDismissRequest = { speedMenuExpanded = false }) {
                                             listOf(0.75f, 1f, 1.25f, 1.5f).forEach { speed ->
@@ -851,7 +851,7 @@ private fun AddisReelApp() {
                                     }
                                 }
                             }
-                            if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (!cinemaMode) Column(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)) {
                                 FilledTonalIconButton(onClick = { toggleSaved(selected.title) }) {
                                     Icon(if (selected.title in saved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Save series")
                                 }
@@ -862,13 +862,13 @@ private fun AddisReelApp() {
                                     Icon(Icons.Default.Info, contentDescription = "Series information")
                                 }
                             }
-                            if (!cinemaMode) Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
-                                Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=AddisCinema.accent, fontWeight=FontWeight.Bold,fontSize=12.sp)
-                                Text(selected.title,fontSize=28.sp,fontWeight=FontWeight.Bold)
+                            if (!cinemaMode) Column(Modifier.align(Alignment.BottomStart).padding(AddisSpacing.comfortable)) {
+                                Text("ADDISREEL  •  EPISODE $episode OF ${selected.episodes}", color=AddisCinema.accent, fontWeight=AddisTypeWeight.strong,fontSize = AddisTypeSize.caption)
+                                Text(selected.title,fontSize = AddisTypeSize.heading,fontWeight=AddisTypeWeight.strong)
                                 Spacer(Modifier.height(8.dp))
                                 LinearProgressIndicator(progress = { episode.toFloat() / selected.episodes.toFloat() }, modifier = Modifier.fillMaxWidth().height(4.dp), color = AddisCinema.accent, trackColor = AddisColors.border)
                                 Text(selected.description, modifier = Modifier.clickable { showFullDescription = !showFullDescription }, maxLines = if (showFullDescription) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, color=Color.LightGray)
-                                Text(if (showFullDescription) "Show less" else "More about this story", modifier = Modifier.clickable { showFullDescription = !showFullDescription }, fontSize = 11.sp, color = AddisCinema.accent)
+                                Text(if (showFullDescription) "Show less" else "More about this story", modifier = Modifier.clickable { showFullDescription = !showFullDescription }, fontSize = AddisTypeSize.micro, color = AddisCinema.accent)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     TextButton(onClick={showEpisodes=true}) { Icon(Icons.Default.List,contentDescription=null); Spacer(Modifier.width(6.dp)); Text("Episodes  •  $episode / ${selected.episodes}") }
                                     TextButton(onClick = {
@@ -877,7 +877,7 @@ private fun AddisReelApp() {
                                     }) {
                                         Icon(Icons.Default.Autorenew, contentDescription = null, modifier = Modifier.size(17.dp))
                                         Spacer(Modifier.width(3.dp))
-                                        Text(if (autoNextEnabled) "Auto-next on" else "Auto-next off", fontSize = 11.sp)
+                                        Text(if (autoNextEnabled) "Auto-next on" else "Auto-next off", fontSize = AddisTypeSize.micro)
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
@@ -888,12 +888,12 @@ private fun AddisReelApp() {
                                 }
                             }
                         }
-                        if (!cinemaMode) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        if (!cinemaMode) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(AddisSpacing.small),horizontalArrangement=Arrangement.spacedBy(AddisSpacing.small)) {
                             catalog.forEach { drama -> AddisChoiceChip(selected=selected==drama,onClick={selectDrama(drama)},label={Text(drama.title)}) }
                         }
                     }
                     1 -> {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.standard, vertical = AddisSpacing.small), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
                                 AddisSectionTitle("AddisReel")
                                 Text(stringResource(R.string.home_tagline), style = AddisScript.style(stringResource(R.string.home_tagline), MaterialTheme.typography.bodySmall), color = AddisColors.textSecondary)
@@ -906,7 +906,7 @@ private fun AddisReelApp() {
                             }
                         }
                         if (!remoteCatalogAvailable) Row(
-                            Modifier.fillMaxWidth().padding(horizontal=12.dp, vertical=2.dp),
+                            Modifier.fillMaxWidth().padding(horizontal=AddisSpacing.compact, vertical=2.dp),
                             verticalAlignment=Alignment.CenterVertically
                         ) {
                             Text(
@@ -916,13 +916,13 @@ private fun AddisReelApp() {
                                     "empty" -> "No published episodes yet · previews only"
                                     "unavailable" -> "Unable to load stories · check internet"
                                     else -> "Loading published episodes…"
-                                }, modifier=Modifier.weight(1f), fontSize=11.sp, color=Gold
+                                }, modifier=Modifier.weight(1f), fontSize = AddisTypeSize.micro, color=Gold
                             )
                             if (catalogStatus != "cached" && catalogStatus != "loading") {
                                 TextButton(onClick={ catalogStatus = "loading"; catalogRefreshRequest++ }) {
                                     Icon(Icons.Default.Refresh, contentDescription=null, modifier=Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Retry", fontSize=12.sp)
+                                    Text("Retry", fontSize = AddisTypeSize.caption)
                                 }
                             }
                         }
@@ -988,7 +988,7 @@ private fun AddisReelApp() {
                             if (homeSearchExpanded) OutlinedTextField(
                                 value = discoverQuery,
                                 onValueChange = { discoverQuery = it },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.standard),
                                 label = { Text("Find your next favorite story") },
                                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                                 singleLine = true,
@@ -1001,8 +1001,8 @@ private fun AddisReelApp() {
                                 }
                             )
                             if (homeSearchExpanded) Row(
-                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(AddisSpacing.compact),
+                                horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
                             ) {
                                 genres.forEach { genre ->
                                     AddisChoiceChip(
@@ -1014,9 +1014,9 @@ private fun AddisReelApp() {
                             }
                             if (homeSearchExpanded) Row(
                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    .padding(horizontal = AddisSpacing.standard, vertical = AddisSpacing.micro),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
                             ) {
                                 Icon(Icons.Default.Sort, contentDescription = null, tint = AddisColors.textSecondary)
                                 listOf("Featured", "For You", "A–Z", "Most episodes", "Recently watched").forEach { sort ->
@@ -1027,14 +1027,14 @@ private fun AddisReelApp() {
                                     )
                                 }
                             }
-                            if (homeSearchExpanded) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (homeSearchExpanded) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = AddisSpacing.compact, vertical = AddisSpacing.micro), horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
                                 AddisChoiceChip(selected = discoverOnlySaved, onClick = { discoverOnlySaved = !discoverOnlySaved }, label = { Text("Saved only") })
                                 AddisChoiceChip(selected = discoverOnlyUnwatched, onClick = { discoverOnlyUnwatched = !discoverOnlyUnwatched }, label = { Text("Not completed") })
                                 if (discoverOnlySaved || discoverOnlyUnwatched) TextButton(onClick = { discoverOnlySaved = false; discoverOnlyUnwatched = false }) { Text("Reset") }
                             }
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)
                             ) {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                 val featured = personalized.firstOrNull { it.id.isNotBlank() }
@@ -1042,11 +1042,11 @@ private fun AddisReelApp() {
                                     item {
                                 ElevatedCard(
                                     onClick = { selectDrama(featured); tab = 0 },
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    shape = RoundedCornerShape(24.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = AddisSpacing.micro),
+                                    shape = RoundedCornerShape(AddisRadius.sheet),
                                     colors = CardDefaults.elevatedCardColors(containerColor = AddisColors.elevated)
                                 ) {
-                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
                                         Box(Modifier.fillMaxWidth().height(296.dp).background(AddisColors.posterPlaceholder)) {
                                             if (featured.posterUrl != null) {
                                                 AsyncImage(model = posterModel(featured.posterUrl, 960, 1080), contentDescription = "Featured drama poster", contentScale = ContentScale.Crop, alignment = Alignment.TopCenter, modifier = Modifier.fillMaxSize(),
@@ -1054,12 +1054,12 @@ private fun AddisReelApp() {
                                                 error = ColorPainter(AddisColors.posterPlaceholder))
                                             }
                                             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(colorStops = arrayOf(0f to Color(0x110C0C10), 0.42f to Color.Transparent, 0.68f to Color(0xDD29202C), 1f to AddisColors.elevated))))
-                                            Text("YOUR FEATURED STORY", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
+                                            Text("YOUR FEATURED STORY", modifier = Modifier.align(Alignment.BottomStart).padding(18.dp), color = Gold, fontWeight = AddisTypeWeight.strong, fontSize = AddisTypeSize.caption, letterSpacing = 1.sp)
                                         }
-                                        Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(featured.title, fontSize = 27.sp, fontWeight = FontWeight.Bold, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Column(Modifier.padding(horizontal = 18.dp, vertical = AddisSpacing.compact), verticalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
+                                        Text(featured.title, fontSize = 27.sp, fontWeight = AddisTypeWeight.strong, lineHeight = 33.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         Text(featured.genre + "  •  " + featured.episodes + " episodes", color = AddisColors.textSecondary)
-                                        Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 14.sp, lineHeight = 21.sp, color = AddisColors.textPrimary)
+                                        Text(featured.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = AddisTypeSize.bodySmall, lineHeight = AddisLineHeight.description, color = AddisColors.textPrimary)
                                         val featuredResume = PlaybackPolicy.resumeEpisode(
                                             preferences.getInt("episode_" + featured.title, 1),
                                             featured.episodes,
@@ -1069,7 +1069,7 @@ private fun AddisReelApp() {
                                             preferences.getStringSet("watched_" + featured.title, emptySet())?.toSet().orEmpty(),
                                             featured.episodes
                                         )
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AddisSpacing.compact)) {
                                             Button(onClick = {
                                                 selectDrama(featured)
                                                 selectEpisode(if (featuredCompleted) 1 else featuredResume)
@@ -1091,14 +1091,14 @@ private fun AddisReelApp() {
 
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && unfinishedHistory.isNotEmpty()) {
                                     item {
-                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
                                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Continue Watching", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
+                                                Text("Continue Watching", fontSize = AddisTypeSize.headingSmall, fontWeight = AddisTypeWeight.strong, lineHeight = AddisLineHeight.headline)
                                                 TextButton(onClick = { tab = 2; libraryFilter = "History" }) { Text("See all") }
                                             }
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
                                             ) {
                                                 unfinishedHistory.forEach { drama ->
                                                         val resume = PlaybackPolicy.resumeEpisode(
@@ -1110,10 +1110,10 @@ private fun AddisReelApp() {
                                                             onClick = { selectDrama(drama); selectEpisode(resume); tab = 0 },
                                                             colors = CardDefaults.elevatedCardColors(containerColor = AddisColors.elevated),
                                                             modifier = Modifier.width(196.dp),
-                                                            shape = RoundedCornerShape(18.dp)
+                                                            shape = RoundedCornerShape(AddisRadius.large)
                                                         ) {
-                                                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                                                                Box(Modifier.fillMaxWidth().height(106.dp).clip(RoundedCornerShape(12.dp)).background(AddisColors.posterPlaceholder)) {
+                                                            Column(Modifier.padding(AddisSpacing.compact), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                                                Box(Modifier.fillMaxWidth().height(106.dp).clip(RoundedCornerShape(AddisRadius.medium)).background(AddisColors.posterPlaceholder)) {
                                                                     if (drama.posterUrl != null) AsyncImage(
                                                                         model = posterModel(drama.posterUrl, 320, 480),
                                                                         contentDescription = "Continue watching " + drama.title,
@@ -1123,15 +1123,15 @@ private fun AddisReelApp() {
                                                                         error = ColorPainter(AddisColors.posterPlaceholder)
                                                                     ) else Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(36.dp))
                                                                     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xAA09090E)))))
-                                                                    Icon(Icons.Default.PlayArrow, contentDescription = "Resume playback", tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp).size(26.dp))
+                                                                    Icon(Icons.Default.PlayArrow, contentDescription = "Resume playback", tint = Color.White, modifier = Modifier.align(Alignment.BottomEnd).padding(AddisSpacing.small).size(26.dp))
                                                                 }
-                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text(drama.title, fontWeight = AddisTypeWeight.strong, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                                 val mediaKey = (drama.id.ifBlank { drama.title }) + "_episode_" + resume
                                                                 val savedPositionMs = playbackPreferences.getLong("position_" + mediaKey, 0L)
                                                                 val savedDurationMs = playbackPreferences.getLong("duration_" + mediaKey, 0L)
                                                                 val resumePositionLabel = if (savedPositionMs >= 5_000L)
                                                                     " · ${savedPositionMs / 60_000}:${((savedPositionMs / 1000) % 60).toString().padStart(2, '0')} saved" else ""
-                                                                Text("Episode $resume of ${drama.episodes}$resumePositionLabel", fontSize = 12.sp, color = Gold, maxLines = 1)
+                                                                Text("Episode $resume of ${drama.episodes}$resumePositionLabel", fontSize = AddisTypeSize.caption, color = Gold, maxLines = 1)
                                                                 val watchedEpisodes = preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty()
                                                                 val completedCount = (1..drama.episodes).count { it.toString() in watchedEpisodes }
                                                                 LinearProgressIndicator(
@@ -1140,7 +1140,7 @@ private fun AddisReelApp() {
                                                                     color = Gold,
                                                                     trackColor = AddisColors.border
                                                                 )
-                                                                Text("$completedCount of ${drama.episodes} episodes completed", fontSize = 11.sp, color = AddisColors.textSecondary)
+                                                                Text("$completedCount of ${drama.episodes} episodes completed", fontSize = AddisTypeSize.micro, color = AddisColors.textSecondary)
                                                             }
                                                         }
                                                     }
@@ -1153,16 +1153,16 @@ private fun AddisReelApp() {
                                     item {
                                         Row(
                                             Modifier.fillMaxWidth()
-                                                .background(AddisColors.elevated, RoundedCornerShape(18.dp))
-                                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                                                .background(AddisColors.elevated, RoundedCornerShape(AddisRadius.large))
+                                                .padding(horizontal = AddisSpacing.standard, vertical = 14.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Gold)
                                             Spacer(Modifier.width(12.dp))
                                             Column(Modifier.weight(1f)) {
-                                                Text("All caught up!", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                                Text("All caught up!", fontWeight = AddisTypeWeight.strong, fontSize = AddisTypeSize.body)
                                                 Text("You've finished your recent stories. Find what to watch next.",
-                                                    fontSize = 12.sp, color = AddisColors.textSecondary, lineHeight = 17.sp)
+                                                    fontSize = AddisTypeSize.caption, color = AddisColors.textSecondary, lineHeight = AddisLineHeight.caption)
                                             }
                                             TextButton(onClick = { tab = 2; libraryFilter = "Completed" }) { Text("View") }
                                         }
@@ -1171,11 +1171,11 @@ private fun AddisReelApp() {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.isNotEmpty()) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("Picked for You", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
-                                            Text(if (viewingHistory.isEmpty()) "Discover stories made for your next binge" else "Inspired by your viewing history", fontSize = 13.sp, color = AddisColors.textSecondary, lineHeight = 19.sp)
+                                            Text("Picked for You", fontSize = AddisTypeSize.headingSmall, fontWeight = AddisTypeWeight.strong, lineHeight = AddisLineHeight.headline)
+                                            Text(if (viewingHistory.isEmpty()) "Discover stories made for your next binge" else "Inspired by your viewing history", fontSize = AddisTypeSize.label, color = AddisColors.textSecondary, lineHeight = AddisLineHeight.description)
                                             Row(
                                                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                horizontalArrangement = Arrangement.spacedBy(AddisSpacing.compact)
                                             ) {
                                                 personalized.take(10).forEach { drama ->
                                                     Card(
@@ -1200,14 +1200,14 @@ private fun AddisReelApp() {
                                                                 }
                                                                 Text(
                                                                     "${drama.episodes} EP",
-                                                                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
-                                                                        .background(Color(0xCC141018), RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 3.dp),
-                                                                    fontSize = 10.sp, color = Color.White
+                                                                    modifier = Modifier.align(Alignment.TopEnd).padding(AddisSpacing.small)
+                                                                        .background(Color(0xCC141018), RoundedCornerShape(AddisRadius.small)).padding(horizontal = 7.dp, vertical = 3.dp),
+                                                                    fontSize = AddisTypeSize.micro, color = Color.White
                                                                 )
                                                             }
                                                             Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                                                Text(drama.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                                                Text(drama.genre, fontSize = 11.sp, color = Gold)
+                                                                Text(drama.title, fontWeight = AddisTypeWeight.strong, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                                Text(drama.genre, fontSize = AddisTypeSize.micro, color = Gold)
                                                             }
                                                         }
                                                     }
@@ -1219,14 +1219,14 @@ private fun AddisReelApp() {
                                 if (!homeSearchExpanded && discoverQuery.isBlank() && discoverGenre == "All" && catalog.size > 1) {
                                     item {
                                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            Text("More Stories to Love", fontSize = 22.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
-                                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Text("More Stories to Love", fontSize = AddisTypeSize.headingSmall, fontWeight = AddisTypeWeight.strong, lineHeight = AddisLineHeight.headline)
+                                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(AddisSpacing.compact)) {
                                                 catalog.asReversed().take(10).forEach { drama ->
                                                     Card(
                                                         onClick = { detailDrama = drama },
                                                         modifier = Modifier.width(130.dp),
                                                         colors = CardDefaults.cardColors(containerColor = AddisColors.surface),
-                                                        shape = RoundedCornerShape(14.dp)
+                                                        shape = RoundedCornerShape(AddisRadius.medium)
                                                     ) {
                                                         Column {
                                                             Box(Modifier.fillMaxWidth().height(178.dp).background(AddisColors.posterPlaceholder)) {
@@ -1238,7 +1238,7 @@ private fun AddisReelApp() {
                                                                     Icon(Icons.Default.Movie, contentDescription = null, tint = Gold, modifier = Modifier.align(Alignment.Center).size(42.dp))
                                                                 }
                                                             }
-                                                            Text(drama.title, modifier = Modifier.padding(10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                                                            Text(drama.title, modifier = Modifier.padding(10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = AddisTypeWeight.strong)
                                                         }
                                                     }
                                                 }
@@ -1251,16 +1251,16 @@ private fun AddisReelApp() {
                                         Card(
                                             onClick = { detailDrama = catalog.first() },
                                             modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(20.dp),
+                                            shape = RoundedCornerShape(AddisRadius.card),
                                             colors = CardDefaults.cardColors(containerColor = AddisColors.elevated)
                                         ) {
-                                            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Text("ADDISREEL ORIGINAL STORIES", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                Text("Discover your next story", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                                                Text("Explore short Ethiopian drama previews. New episodes are coming soon.", color = AddisColors.textSecondary, fontSize = 13.sp)
+                                            Column(Modifier.padding(AddisSpacing.comfortable), verticalArrangement = Arrangement.spacedBy(AddisSpacing.small)) {
+                                                Text("ADDISREEL ORIGINAL STORIES", color = Gold, fontSize = AddisTypeSize.micro, fontWeight = AddisTypeWeight.strong)
+                                                Text("Discover your next story", fontSize = AddisTypeSize.headingSmall, fontWeight = AddisTypeWeight.strong)
+                                                Text("Explore short Ethiopian drama previews. New episodes are coming soon.", color = AddisColors.textSecondary, fontSize = AddisTypeSize.label)
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Gold)
-                                                    Text("Explore featured series", color = Gold, fontWeight = FontWeight.Bold)
+                                                    Text("Explore featured series", color = Gold, fontWeight = AddisTypeWeight.strong)
                                                 }
                                             }
                                         }
@@ -1269,11 +1269,11 @@ private fun AddisReelApp() {
                                 item { Text((if (homeSearchExpanded) "Search results · " else "All dramas · ") + "${filtered.size} titles" + if (discoverSort == "For You") " · Personalized on this device" else "", color = AddisColors.textSecondary) }
                                 if (filtered.isEmpty()) {
                                     item {
-                                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Column(Modifier.fillMaxWidth().padding(AddisSpacing.section), horizontalAlignment = Alignment.CenterHorizontally) {
                                             Icon(Icons.Default.SearchOff, contentDescription = null, tint = Gold, modifier = Modifier.size(44.dp))
                                             Spacer(Modifier.height(12.dp))
-                                            Text("No stories found", fontWeight = FontWeight.Bold, fontSize = 20.sp, lineHeight = 26.sp)
-                                            Text("Try a different title, genre, or filter.", color = AddisColors.textSecondary, fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center)
+                                            Text("No stories found", fontWeight = AddisTypeWeight.strong, fontSize = AddisTypeSize.title, lineHeight = AddisLineHeight.headline)
+                                            Text("Try a different title, genre, or filter.", color = AddisColors.textSecondary, fontSize = AddisTypeSize.bodySmall, lineHeight = AddisLineHeight.description, textAlign = TextAlign.Center)
                                             TextButton(onClick = { discoverQuery = ""; discoverGenre = "All"; discoverOnlySaved = false; discoverOnlyUnwatched = false; discoverSort = "Featured" }) { Text("Clear filters") }
                                         }
                                     }
@@ -1291,8 +1291,8 @@ private fun AddisReelApp() {
                         Header(stringResource(R.string.library_heading))
                         Row(
                             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                .padding(horizontal = AddisSpacing.standard, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(AddisSpacing.small)
                         ) {
                             listOf("Saved", "History", "Completed").forEach { filter ->
                                 AddisChoiceChip(
@@ -1303,7 +1303,7 @@ private fun AddisReelApp() {
                             }
                         }
                         if (libraryFilter == "History" && viewingHistory.isNotEmpty()) {
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
+                            Row(Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.standard), horizontalArrangement = Arrangement.End) {
                                 TextButton(onClick = {
                                     confirmClearHistory = true
                                 }) {
@@ -1321,17 +1321,17 @@ private fun AddisReelApp() {
                             )
                             Card(
                                 onClick = { selectDrama(recent); selectEpisode(if (recentCompleted) 1 else resumeEpisode); tab = 0 },
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = AddisSpacing.standard, vertical = 6.dp),
                                 colors = CardDefaults.cardColors(containerColor = AddisColors.elevated),
-                                shape = RoundedCornerShape(18.dp)
+                                shape = RoundedCornerShape(AddisRadius.large)
                             ) {
-                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Row(Modifier.padding(AddisSpacing.standard), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.PlayCircle, contentDescription = null, tint = Gold, modifier = Modifier.size(36.dp))
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
-                                        Text(if (recentCompleted) "WATCH AGAIN" else "CONTINUE WATCHING", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        Text(recent.title, fontWeight = FontWeight.Bold)
-                                        Text(if (recentCompleted) "Start again from episode 1" else "Resume episode $resumeEpisode of ${recent.episodes}", fontSize = 12.sp, color = AddisColors.textSecondary)
+                                        Text(if (recentCompleted) "WATCH AGAIN" else "CONTINUE WATCHING", color = Gold, fontSize = AddisTypeSize.micro, fontWeight = AddisTypeWeight.strong)
+                                        Text(recent.title, fontWeight = AddisTypeWeight.strong)
+                                        Text(if (recentCompleted) "Start again from episode 1" else "Resume episode $resumeEpisode of ${recent.episodes}", fontSize = AddisTypeSize.caption, color = AddisColors.textSecondary)
                                     }
                                     Icon(Icons.Default.ChevronRight, contentDescription = if (recentCompleted) "Watch series again" else "Resume series", tint = Gold)
                                 }
@@ -1353,21 +1353,21 @@ private fun AddisReelApp() {
                             Column(
                                 Modifier.fillMaxWidth().padding(28.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)
                             ) {
                                 Icon(if (libraryFilter == "History") Icons.Default.History else if (libraryFilter == "Completed") Icons.Default.CheckCircle else Icons.Default.BookmarkBorder, contentDescription = null, modifier = Modifier.size(52.dp), tint = Gold)
-                                Text(when (libraryFilter) { "History" -> "No recently watched dramas"; "Completed" -> "No completed dramas yet"; else -> "Your collection starts here" }, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(when (libraryFilter) { "History" -> "No recently watched dramas"; "Completed" -> "No completed dramas yet"; else -> "Your collection starts here" }, fontSize = AddisTypeSize.title, fontWeight = AddisTypeWeight.strong)
                                 Text(when (libraryFilter) { "History" -> "Stories you start watching will appear here."; "Completed" -> "Complete a series to add it to your finished stories."; else -> "Bookmark the stories you love and return anytime." }, color = AddisColors.textSecondary)
                                 Button(onClick = { tab = 1 }) { Text("Discover Stories") }
                             }
                         } else {
                             LazyColumn(
                                 contentPadding = PaddingValues(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalArrangement = Arrangement.spacedBy(AddisSpacing.compact)
                             ) {
                                 item { Text("${libraryTitles.size} ${libraryFilter.lowercase()} dramas", color = AddisColors.textSecondary) }
                                 items(libraryTitles) { drama ->
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(AddisSpacing.micro)) {
                                         val started = drama.title in viewingHistory
                                         val fullyWatched = PlaybackPolicy.isFullyWatched(
                                             preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty(),
@@ -1387,7 +1387,7 @@ private fun AddisReelApp() {
                                                     fullyWatched -> "Watch again · Episode 1"
                                                     started -> "Continue · Episode $continueEpisode of ${drama.episodes}"
                                                     else -> "Start watching · Episode 1"
-                                                }, color = Gold, fontSize = 12.sp
+                                                }, color = Gold, fontSize = AddisTypeSize.caption
                                             )
                                             if (libraryFilter == "Saved") {
                                                 TextButton(onClick = { toggleSaved(drama.title) }) {
@@ -1406,8 +1406,8 @@ private fun AddisReelApp() {
                         // The bottom navigation remains outside this independently scrollable pane.
                         Column(
                             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = 24.dp, vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                                .padding(horizontal = AddisSpacing.section, vertical = AddisSpacing.standard),
+                            verticalArrangement = Arrangement.spacedBy(AddisSpacing.standard)
                         ) {
                             AddisScreenTitle(stringResource(R.string.premium_heading), "Stories worth staying for.")
                             // Updates are essential app maintenance, not a premium purchase.
@@ -1417,11 +1417,11 @@ private fun AddisReelApp() {
                             InAppUpdatePanel()
                             HorizontalDivider()
                             Icon(Icons.Default.Diamond, null, Modifier.size(48.dp), tint = Gold)
-                            Text("Unlock more Ethiopian stories", fontSize = 26.sp, fontWeight = FontWeight.Bold, lineHeight = 32.sp)
-                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.", color = AddisColors.textSecondary, lineHeight = 22.sp)
+                            Text("Unlock more Ethiopian stories", fontSize = AddisTypeSize.heading, fontWeight = AddisTypeWeight.strong, lineHeight = AddisLineHeight.headline)
+                            Text("Premium checkout with Ethiopian payment methods is planned. Payments are not enabled in this preview.", color = AddisColors.textSecondary, lineHeight = AddisLineHeight.body)
                             Card {
-                                Column(Modifier.padding(20.dp)) {
-                                    Text("Coming soon", color = Gold, fontWeight = FontWeight.Bold)
+                                Column(Modifier.padding(AddisSpacing.comfortable)) {
+                                    Text("Coming soon", color = Gold, fontWeight = AddisTypeWeight.strong)
                                     Text("telebirr • Ethiopian banks • local payment gateway")
                                 }
                             }
@@ -1444,17 +1444,17 @@ private fun AddisReelApp() {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(AddisRadius.card),
         colors = CardDefaults.cardColors(containerColor = AddisColors.elevated)
     ) {
         Row(
-            Modifier.padding(12.dp),
+            Modifier.padding(AddisSpacing.compact),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(AddisSpacing.standard)
         ) {
             Box(
                 Modifier.size(width = 112.dp, height = 160.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(AddisRadius.medium))
                     .background(Brush.verticalGradient(posterColors))
             ) {
                 if (drama.posterUrl != null) {
@@ -1471,8 +1471,8 @@ private fun AddisReelApp() {
                     ) {
                         Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(38.dp), tint = Gold)
                         Spacer(Modifier.height(8.dp))
-                        Text("ADDISREEL", fontSize = 9.sp, color = Gold, fontWeight = FontWeight.Bold)
-                        Text("Poster coming soon", fontSize = 8.sp, color = AddisColors.textSecondary)
+                        Text("ADDISREEL", fontSize = AddisTypeSize.micro, color = Gold, fontWeight = AddisTypeWeight.strong)
+                        Text("Poster coming soon", fontSize = AddisTypeSize.micro, color = AddisColors.textSecondary)
                     }
                 }
                 Box(
@@ -1484,32 +1484,32 @@ private fun AddisReelApp() {
                     if (resumeEpisode != null) "CONTINUE · EP $resumeEpisode" else "${drama.episodes} EPISODES",
                     modifier = Modifier.align(Alignment.BottomStart).padding(start = 9.dp, bottom = 9.dp),
                     color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = AddisTypeSize.micro,
+                    fontWeight = AddisTypeWeight.strong,
                     maxLines = 1
                 )
                 if (drama.id.isNotBlank()) {
                     Surface(
                         modifier = Modifier.align(Alignment.TopStart).padding(7.dp),
                         color = Color(0xD9211C12),
-                        shape = RoundedCornerShape(6.dp)
+                        shape = RoundedCornerShape(AddisRadius.small)
                     ) {
                         Text(
                             "STREAM",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                             color = Gold,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = AddisTypeSize.micro,
+                            fontWeight = AddisTypeWeight.strong
                         )
                     }
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                Text(drama.title, fontWeight = FontWeight.Bold, fontSize = 19.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(drama.genre.uppercase(), color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Text("${drama.episodes} short episodes", fontSize = 12.sp, color = AddisColors.textSecondary)
+                Text(drama.title, fontWeight = AddisTypeWeight.strong, fontSize = AddisTypeSize.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(drama.genre.uppercase(), color = Gold, fontSize = AddisTypeSize.micro, fontWeight = AddisTypeWeight.strong)
+                Text("${drama.episodes} short episodes", fontSize = AddisTypeSize.caption, color = AddisColors.textSecondary)
                 if (resumeEpisode != null) {
-                    Text("Continue · Episode $resumeEpisode of ${drama.episodes}", fontSize = 11.sp, color = Gold)
+                    Text("Continue · Episode $resumeEpisode of ${drama.episodes}", fontSize = AddisTypeSize.micro, color = Gold)
                     LinearProgressIndicator(
                         progress = { (resumeEpisode - 1).toFloat() / drama.episodes.coerceAtLeast(1) },
                         modifier = Modifier.fillMaxWidth().height(3.dp),
@@ -1517,11 +1517,11 @@ private fun AddisReelApp() {
                         trackColor = AddisColors.border
                     )
                 }
-                Text(drama.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = 12.sp, color = AddisColors.textSecondary)
+                Text(drama.description, maxLines = 3, overflow = TextOverflow.Ellipsis, fontSize = AddisTypeSize.caption, color = AddisColors.textSecondary)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(16.dp), tint = Gold)
                     Spacer(Modifier.width(5.dp))
-                    Text("View series details", fontSize = 11.sp, color = Gold)
+                    Text("View series details", fontSize = AddisTypeSize.micro, color = Gold)
                 }
             }
         }
@@ -1866,14 +1866,14 @@ private fun AddisReelApp() {
                 Text(
                     if (isOnline) "Buffering your episode…" else "Waiting for an internet connection…",
                     color = Color.White,
-                    fontSize = 13.sp
+                    fontSize = AddisTypeSize.label
                 )
             }
         }
         if (playbackEnded && !playbackError) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (hasNextEpisode) {
-                    Text(if (autoPlayNext) "Next episode in $nextCountdown" else "Episode complete", color = Color.White, fontSize = 15.sp)
+                    Text(if (autoPlayNext) "Next episode in $nextCountdown" else "Episode complete", color = Color.White, fontSize = AddisTypeSize.body)
                     Spacer(Modifier.height(10.dp))
                     Button(onClick = {
                         if (!nextRequested) {
