@@ -560,7 +560,7 @@ private fun AddisReelApp() {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
                     Text(selected.title, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                     Text("${selected.episodes} short episodes · Select an episode", color = Gold, fontSize = 12.sp)
-                    val lastReached = preferences.getInt("episode_" + selected.title, 1).coerceIn(1, selected.episodes)
+                    val lastReached = savedResumeEpisode(selected)
                     // Only completed episodes count as watched; jumping ahead is not completion.
                     val watchedEpisodes = preferences.getStringSet("watched_" + selected.title, emptySet())?.toSet().orEmpty()
                     val watchedCount = watchedEpisodes.count { number -> number.toIntOrNull()?.let { it in 1..selected.episodes } == true }
@@ -1275,7 +1275,7 @@ private fun AddisReelApp() {
                                 items(filtered) { drama ->
                                     DramaRow(
                                         drama,
-                                        resumeEpisode = if (drama.title in viewingHistory) preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes) else null
+                                        resumeEpisode = if (drama.title in viewingHistory) savedResumeEpisode(drama) else null
                                     ) { detailDrama = drama }
                                 }
                             }
@@ -1362,15 +1362,27 @@ private fun AddisReelApp() {
                                 item { Text("${libraryTitles.size} ${libraryFilter.lowercase()} dramas", color = Color.LightGray) }
                                 items(libraryTitles) { drama ->
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        DramaRow(drama, resumeEpisode = preferences.getInt("episode_" + drama.title, 1).coerceIn(1, drama.episodes)) { selectDrama(drama); tab = 0 }
+                                        val started = drama.title in viewingHistory
+                                        val fullyWatched = PlaybackPolicy.isFullyWatched(
+                                            preferences.getStringSet("watched_" + drama.title, emptySet())?.toSet().orEmpty(),
+                                            drama.episodes
+                                        )
+                                        val continueEpisode = savedResumeEpisode(drama)
+                                        DramaRow(drama, resumeEpisode = if (started) continueEpisode else null) {
+                                            selectDrama(drama); tab = 0
+                                        }
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            val lastEpisode = preferences.getInt("episode_" + drama.title, 1)
-                                                .coerceIn(1, drama.episodes)
-                                            Text("Continue · Episode $lastEpisode of ${drama.episodes}", color = Gold, fontSize = 12.sp)
+                                            Text(
+                                                when {
+                                                    fullyWatched -> "Watch again · Episode 1"
+                                                    started -> "Continue · Episode $continueEpisode of ${drama.episodes}"
+                                                    else -> "Start watching · Episode 1"
+                                                }, color = Gold, fontSize = 12.sp
+                                            )
                                             if (libraryFilter == "Saved") {
                                                 TextButton(onClick = { toggleSaved(drama.title) }) {
                                                     Icon(Icons.Default.BookmarkRemove, contentDescription = null, modifier = Modifier.size(16.dp))
