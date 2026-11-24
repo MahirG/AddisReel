@@ -221,7 +221,7 @@ class CreatorStudioActivity : ComponentActivity() {
                 ): Boolean {
                     pendingPicker?.onReceiveValue(null)
                     pendingPicker = callback
-                    val accepted = params?.acceptTypes?.filter { it.isNotBlank() }?.toTypedArray() ?: emptyArray()
+                    val accepted = params?.acceptTypes?.flatMap { it.split(",") }\n                        ?.map { it.trim() }?.filter { it.contains("/") && it.isNotBlank() }\n                        ?.toTypedArray() ?: emptyArray()
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = if (accepted.size == 1) accepted[0] else "*/*"
@@ -240,7 +240,7 @@ class CreatorStudioActivity : ComponentActivity() {
                 }
             }
             setDownloadListener { link, _, _, mime, _ ->
-                if (StudioNavigationPolicy.isPrivateAgreement(link) && mime.startsWith("application/pdf")) {
+                if (StudioNavigationPolicy.isPrivateAgreement(link) && mime?.startsWith("application/pdf") == true) {
                     downloadPdf(link)
                 } else alert(R.string.studio_download_blocked)
             }
